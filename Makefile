@@ -8,7 +8,7 @@ TEST_SOURCE = test
 OBJECT = obj
 EXECUTABLE = exe
 
-CFLAGS = -Wall -Werror -Wextra -O3 -I$(H_SOURCE) -static
+CFLAGS = -Wall -Werror -Wextra -I$(H_SOURCE) -static
 
 $(OBJECT):
 	mkdir $(OBJECT)
