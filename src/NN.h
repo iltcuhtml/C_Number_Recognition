@@ -5,11 +5,11 @@
 #include <math.h>
 
 #ifndef NN_EPS
-#define NN_EPS 1E-1
+#define NN_EPS (float) 1E-4
 #endif // NN_EPS
 
 #ifndef NN_RATE
-#define NN_RATE 1E-1
+#define NN_RATE (float) 1E-2
 #endif // NN_RATE
 
 #ifndef NN_MALLOC
@@ -56,6 +56,8 @@ void Mat_dot(Mat dst, Mat m1, Mat m2);
 
 void Mat_sig(Mat m);
 
+void Mat_free(Mat m);
+
 typedef struct
 {
     size_t count;
@@ -85,6 +87,8 @@ void NN_finite_diff(NN nn, NN dnn, Mat tdi, Mat tdo);
 
 // dnn = diff_nn
 void NN_train(NN nn, NN dnn);
+
+void NN_free(NN nn);
 
 #endif // NN_H
 
@@ -215,6 +219,11 @@ void Mat_sig(Mat m)
         }
 }
 
+void Mat_free(Mat m)
+{
+    free(m.es);
+}
+
 NN NN_alloc(size_t *arch, size_t arch_count)
 {
     NN_ASSERT(arch_count > 0);
@@ -229,15 +238,15 @@ NN NN_alloc(size_t *arch, size_t arch_count)
     nn.bs = NN_MALLOC(sizeof(*nn.bs) * nn.count);
     NN_ASSERT(nn.bs != NULL);
     
-    nn.as = NN_MALLOC(sizeof(*nn.as) * nn.count);
+    nn.as = NN_MALLOC(sizeof(*nn.as) * (nn.count + 1));
     NN_ASSERT(nn.as != NULL);
 
     nn.as[0] = Mat_alloc(1, arch[0]);
 
     for (size_t i = 0; i < nn.count; ++i)
     {
-        nn.ws[i] = Mat_alloc(nn.as[i].cols, arch[i + 1]);
-        nn.bs[i] = Mat_alloc(1, arch[i + 1]);
+        nn.ws[i]     = Mat_alloc(nn.as[i].cols, arch[i + 1]);
+        nn.bs[i]     = Mat_alloc(1, arch[i + 1]);
         nn.as[i + 1] = Mat_alloc(1, arch[i + 1]);
     }
 
@@ -353,6 +362,21 @@ void NN_train(NN nn, NN dnn)
                 MAT_AT(nn.bs[i], ii, iii) -= MAT_AT(dnn.bs[i], ii, iii) * NN_RATE;
             }
     }
+}
+
+void NN_free(NN nn) {
+    for (size_t i = 0; i < nn.count; ++i)
+    {
+        Mat_free(nn.ws[i]);
+        Mat_free(nn.bs[i]);
+        Mat_free(nn.as[i + 1]);
+    }
+
+    Mat_free(nn.as[0]);
+
+    free(nn.ws);
+    free(nn.bs);
+    free(nn.as);
 }
 
 #endif // NN_IMPLEMENTATION

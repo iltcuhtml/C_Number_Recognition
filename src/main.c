@@ -2,12 +2,12 @@
 
 #define NN_IMPLEMENTATION
 
-#define NN_EPS  1E-1
-#define NN_RATE 1E-1
+#define NN_EPS  (float) 1E-4
+#define NN_RATE (float) 1E-2
 
 #include "NN.h"
 
-#define TRAIN_COUNT 1E6
+#define TRAIN_COUNT (size_t) 1E6
 
 float AND_gate[] = {
     0, 0, 0,
@@ -83,6 +83,12 @@ int main(void) // int argc, char* argv[]
 
             printf("\n%zu ^ %zu = %f", i, ii, MAT_AT(NN_OUTPUT(nn), 0, 0));
         }
+
+    Mat_free(tdi);
+    Mat_free(tdo);
     
+    NN_free(nn);
+    NN_free(dnn);
+
     return 0;
 }
