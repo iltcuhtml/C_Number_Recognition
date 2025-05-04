@@ -92,9 +92,6 @@ int main(void) // int argc, char* argv[]
 
             printf("\n%zu ^ %zu = %f", i, ii, MAT_AT(NN_OUTPUT(nn), 0, 0));
         }
-
-    Mat_free(ti);
-    Mat_free(to);
     
     NN_free(nn);
     NN_free(gnn);
