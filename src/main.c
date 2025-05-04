@@ -34,7 +34,7 @@ int main(void)
         MAT_AT(to, i, BITS) = z >= n;
     }
 
-    size_t arch[] = { BITS * 2, BITS * 4, BITS + 1};
+    size_t arch[] = { BITS * 2, BITS * 4, BITS + 1 };
     NN nn  = NN_alloc(arch, ARRAY_LEN(arch));
     NN gnn = NN_alloc(arch, ARRAY_LEN(arch));
 
