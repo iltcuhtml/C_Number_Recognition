@@ -38,7 +38,7 @@ void Mat_rand(Mat m, float low, float high);
 void Mat_fill(Mat m, float x);
 
 void Mat_print(Mat m, const char *name, size_t padding);
-#define MAT_PRINT(m) mat_print(m, #m, 0)
+#define MAT_PRINT(m) Mat_print(m, #m, 0)
 
 Mat Mat_row(Mat m, size_t row);
 void Mat_copy(Mat dst, Mat src);
@@ -274,7 +274,7 @@ void NN_print(NN nn, const char *name)
 {
     char buf[256];
 
-    printf("\n%s = [\n", name);
+    printf("\n%s = [", name);
     
     for (size_t i = 0; i < nn.count; ++i)
     {
