@@ -82,7 +82,7 @@ void NN_finite_diff(NN nn, NN gnn, Mat ti, Mat to, float eps);
 void NN_backprop(NN nn, NN gnn, Mat ti, Mat to);
 
 // gnn - gradient nn
-void NN_train(NN nn, NN gnn, float rate);
+void NN_learn(NN nn, NN gnn, float rate);
 
 void NN_free(NN nn);
 
@@ -426,7 +426,7 @@ void NN_backprop(NN nn, NN gnn, Mat ti, Mat to)
     }
 }
 
-void NN_train(NN nn, NN gnn, float rate)
+void NN_learn(NN nn, NN gnn, float rate)
 {
     for (size_t i = 0; i < nn.count; ++i)
     {

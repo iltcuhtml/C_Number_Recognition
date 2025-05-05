@@ -74,7 +74,7 @@ int main(void) // int argc, char* argv[]
     for (size_t i = 0; i < TRAIN_COUNT; ++i)
     {
         NN_backprop(nn, gnn, ti, to);
-        NN_train(nn, gnn, RATE);
+        NN_learn(nn, gnn, RATE);
     }
 
     NN_PRINT(nn);

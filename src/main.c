@@ -1,13 +1,88 @@
+#include <stdint.h>
 #include <time.h>
 
 #define NN_IMPLEMENTATION
 #include "NN.h"
 
-#define TRAIN_COUNT (size_t) 1E4
+#include "raylib.h"
+
+#define TRAIN_COUNT (size_t) 2E4
 
 #define RATE (float) 1E-0
 
-#define BITS (1 << 2)
+#define BITS 4
+
+#define IMG_FACTOR 100
+#define IMG_WIDTH  (IMG_FACTOR * 16)
+#define IMG_HEIGHT (IMG_FACTOR * 9)
+
+uint32_t img_pixels[IMG_WIDTH * IMG_HEIGHT];
+
+void NN_render_raylib(NN nn)
+{
+    Color background_color = { 0x18, 0x18, 0x18, 0xFF };
+
+    Color low_color  = { 0xFF, 0x18, 0xFF, 0xFF };
+    Color high_color = { 0x00, 0xFF, 0x00, 0xFF };
+
+    ClearBackground(background_color);
+
+    int neuron_radius = 25;
+
+    int layer_border_vpad = 50;
+    int layer_border_hpad = 50;
+    
+    int nn_width = IMG_WIDTH - layer_border_hpad * 2;
+    int nn_height = IMG_HEIGHT - layer_border_vpad * 2;
+    
+    int nn_x = IMG_WIDTH / 2 - nn_width / 2;
+    int nn_y = IMG_HEIGHT / 2 - nn_height / 2;
+
+    size_t arch_count = nn.count + 1;
+    int layer_hpad = nn_width / arch_count;
+
+    for (size_t iv = 0; iv < arch_count; ++iv)
+    {
+        int layer_vpad1 = nn_height / nn.as[iv].cols;
+
+        for (size_t i = 0; i < nn.as[iv].cols; ++i)
+        {
+            int cx1 = nn_x + layer_hpad * iv + layer_hpad / 2;
+            int cy1 = nn_y + layer_vpad1 * i + layer_vpad1 / 2;
+            
+            if (iv + 1 < arch_count)
+            {
+                int layer_vpad2 = nn_height / nn.as[iv + 1].cols;
+                
+                for (size_t ii = 0; ii < nn.as[iv + 1].cols; ++ii)
+                {
+                    /* 
+                     * i  - rows of ws
+                     * ii - cols of ws
+                     */
+
+                    int cx2 = nn_x + layer_hpad * (iv + 1) + layer_hpad / 2;
+                    int cy2 = nn_y + layer_vpad2 * ii + layer_vpad2 / 2;
+                    
+                    high_color.a = floorf(sigmoidf(MAT_AT(nn.ws[iv], i, ii)) * 255.0F);
+
+                    DrawLine(cx1, cy1, cx2, cy2, ColorAlphaBlend(low_color, high_color, WHITE));
+                }
+            }
+
+            if (iv > 0)
+            {
+                high_color.a = floorf(255.f*sigmoidf(MAT_AT(nn.bs[iv - 1], 0, i)));
+
+                DrawCircle(cx1, cy1, neuron_radius, ColorAlphaBlend(low_color, high_color, WHITE));
+            }
+            else
+            {
+                DrawCircle(cx1, cy1, neuron_radius, GRAY);
+            }
+        }
+    }
+}
 
 int main(void)
 {
@@ -34,19 +109,37 @@ int main(void)
         MAT_AT(to, i, BITS) = z >= n;
     }
 
-    size_t arch[] = { BITS * 2, BITS * 4, BITS + 1 };
+    size_t arch[] = { BITS * 2, BITS * 4, BITS * 2, BITS + 1 };
+
     NN nn  = NN_alloc(arch, ARRAY_LEN(arch));
     NN gnn = NN_alloc(arch, ARRAY_LEN(arch));
 
     NN_rand(nn, 0, 1);
 
-    for (size_t i = 0; i < TRAIN_COUNT; ++i)
+    InitWindow(IMG_WIDTH, IMG_HEIGHT, "main");
+
+    SetTargetFPS(1000);
+
+    size_t i = 0;
+
+    while (!WindowShouldClose())
     {
-        NN_backprop(nn, gnn, ti, to);
-        NN_train(nn, gnn, RATE);
+        if (i < TRAIN_COUNT)
+        {
+            NN_backprop(nn, gnn, ti, to);
+            NN_learn(nn, gnn, RATE);
+
+            ++i;
+        }
+
+        BeginDrawing();
+
+        NN_render_raylib(nn);
+        if (i % 1000 == 0) printf("%zu : cost = %f\n", i, NN_cost(nn, ti, to));
+
+        EndDrawing();
     }
     
-    printf("cost = %f\n\n", NN_cost(nn, ti, to));
 
     size_t fails = 0;
 

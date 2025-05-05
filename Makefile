@@ -1,14 +1,16 @@
 CC = gcc
-PP = g++
 
 C_SOURCE = src
 H_SOURCE = src
-TEST_SOURCE = test
 
 OBJECT = obj
 EXECUTABLE = exe
 
-CFLAGS = -Wall -Werror -Wextra -O3 -I$(H_SOURCE) -static
+INCLUDE_PATH = C:/raylib/w64devkit/x86_64-w64-mingw32/include
+LIBRARY_PATH = C:/raylib/w64devkit/x86_64-w64-mingw32/lib
+
+CFLAGS = -Wall -Werror -Wextra -O3 -I$(INCLUDE_PATH)
+LDFLAGS = -lraylib -static-libgcc -static-libstdc++
 
 $(OBJECT):
 	mkdir $(OBJECT)
@@ -16,20 +18,19 @@ $(OBJECT):
 $(EXECUTABLE):
 	mkdir $(EXECUTABLE)
 
-#make main
-main: $(OBJECT)/main.o | $(EXECUTABLE)/main
+main: $(EXECUTABLE)/main.exe
 
-# main
-$(EXECUTABLE)/main: $(OBJECT)/main.o | $(EXECUTABLE)
-	$(CC) $(CFLAGS) $(OBJECT)/main.o -o $(EXECUTABLE)/main
+$(EXECUTABLE)/main.exe: $(OBJECT)/main.o | $(EXECUTABLE)
+	$(CC) $(OBJECT)/main.o -o $(EXECUTABLE)/main.exe $(LDFLAGS)
 	strip $(EXECUTABLE)/main.exe
 
-# main.c
 $(OBJECT)/main.o: $(C_SOURCE)/main.c | $(OBJECT)
 	$(CC) $(CFLAGS) -c $(C_SOURCE)/main.c -o $(OBJECT)/main.o
 
 obj_clean:
-	del /Q obj\*
+	del /Q $(OBJECT)\*
 
-out_clean:
-	del /Q out
+exe_clean:
+	del /Q $(EXECUTABLE)\*
+
+clean: obj_clean exe_clean
