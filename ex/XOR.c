@@ -38,7 +38,7 @@ float XOR_gate[] = {
 // td - train data
 float *td = XOR_gate;
 
-int main(void) // int argc, char* argv[]
+int main(void)
 {
     srand(time(0));
 

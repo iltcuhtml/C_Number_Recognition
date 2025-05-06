@@ -6,12 +6,6 @@
 
 #include "raylib.h"
 
-#define TRAIN_COUNT (size_t) 2E4
-
-#define RATE (float) 1E-0
-
-#define BITS 4
-
 #define IMG_FACTOR 100
 #define IMG_WIDTH  (IMG_FACTOR * 16)
 #define IMG_HEIGHT (IMG_FACTOR * 9)
@@ -41,11 +35,11 @@ void NN_render_raylib(NN nn)
     size_t arch_count = nn.count + 1;
     int layer_hpad = nn_width / arch_count;
 
-    for (size_t iv = 0; iv < arch_count; ++iv)
+    for (size_t iv = 0; iv < arch_count; iv++)
     {
         int layer_vpad1 = nn_height / nn.as[iv].cols;
 
-        for (size_t i = 0; i < nn.as[iv].cols; ++i)
+        for (size_t i = 0; i < nn.as[iv].cols; i++)
         {
             int cx1 = nn_x + layer_hpad * iv + layer_hpad / 2;
             int cy1 = nn_y + layer_vpad1 * i + layer_vpad1 / 2;
@@ -54,7 +48,7 @@ void NN_render_raylib(NN nn)
             {
                 int layer_vpad2 = nn_height / nn.as[iv + 1].cols;
                 
-                for (size_t ii = 0; ii < nn.as[iv + 1].cols; ++ii)
+                for (size_t ii = 0; ii < nn.as[iv + 1].cols; ii++)
                 {
                     /* 
                      * i  - rows of ws
@@ -63,10 +57,16 @@ void NN_render_raylib(NN nn)
 
                     int cx2 = nn_x + layer_hpad * (iv + 1) + layer_hpad / 2;
                     int cy2 = nn_y + layer_vpad2 * ii + layer_vpad2 / 2;
-                    
-                    high_color.a = floorf(sigmoidf(MAT_AT(nn.ws[iv], i, ii)) * 255.0F);
 
-                    DrawLine(cx1, cy1, cx2, cy2, ColorAlphaBlend(low_color, high_color, WHITE));
+                    float value = sigmoidf(MAT_AT(nn.ws[iv], i, ii));
+                    high_color.a = floorf(value * 255.0F);
+                    
+                    float thick = value * 1.0F + 1.5F;
+
+                    Vector2 start = { cx1, cy1 };
+                    Vector2 end   = { cx2, cy2 };
+
+                    DrawLineEx(start, end, thick, ColorAlphaBlend(low_color, high_color, WHITE));
                 }
             }
 
@@ -84,6 +84,12 @@ void NN_render_raylib(NN nn)
     }
 }
 
+#define TRAIN_COUNT (size_t) 2E4
+
+#define RATE (float) 1E-0
+
+#define BITS 4
+
 int main(void)
 {
     size_t n = (1 << BITS);
@@ -92,14 +98,14 @@ int main(void)
     Mat ti = Mat_alloc(rows, BITS * 2);
     Mat to = Mat_alloc(rows, BITS + 1);
 
-    for (size_t i = 0; i < ti.rows; ++i)
+    for (size_t i = 0; i < ti.rows; i++)
     {
         size_t x = i / n;
         size_t y = i % n;
 
         size_t z = x + y;
 
-        for (size_t ii = 0; ii < BITS; ++ii)
+        for (size_t ii = 0; ii < BITS; ii++)
         {
             MAT_AT(ti, i, ii)        = (x >> ii) & 1;
             MAT_AT(ti, i, ii + BITS) = (y >> ii) & 1;
@@ -116,7 +122,7 @@ int main(void)
 
     NN_rand(nn, 0, 1);
 
-    InitWindow(IMG_WIDTH, IMG_HEIGHT, "main");
+    InitWindow(IMG_WIDTH, IMG_HEIGHT, "adder");
 
     SetTargetFPS(1000);
 
@@ -129,26 +135,26 @@ int main(void)
             NN_backprop(nn, gnn, ti, to);
             NN_learn(nn, gnn, RATE);
 
-            ++i;
+            i++;
+
+            if (i % 1000 == 0) printf("%zu : cost = %f\n", i, NN_cost(nn, ti, to));
         }
 
         BeginDrawing();
 
         NN_render_raylib(nn);
-        if (i % 1000 == 0) printf("%zu : cost = %f\n", i, NN_cost(nn, ti, to));
 
         EndDrawing();
     }
-    
 
     size_t fails = 0;
 
-    for (size_t x = 0; x < n; ++x)
-        for (size_t y = 0; y < n; ++y)
+    for (size_t x = 0; x < n; x++)
+        for (size_t y = 0; y < n; y++)
         {
             size_t z = x + y;
 
-            for (size_t ii = 0; ii < BITS; ++ii)
+            for (size_t ii = 0; ii < BITS; ii++)
             {
                 MAT_AT(NN_INPUT(nn), 0, ii)        = (x >> ii) & 1;
                 MAT_AT(NN_INPUT(nn), 0, ii + BITS) = (y >> ii) & 1;
@@ -162,14 +168,14 @@ int main(void)
                 {
                     printf("%zu + %zu = (OVERFLOW <> %zu)\n", x, y, z);
 
-                    fails += 1;
+                    fails++;
                 }
             }
             else
             {
                 size_t a = 0;
 
-                for(size_t ii = 0; ii < BITS; ++ii)
+                for(size_t ii = 0; ii < BITS; ii++)
                 {
                     size_t bit = MAT_AT(NN_OUTPUT(nn), 0, ii) > 0.5F;
 
@@ -180,14 +186,14 @@ int main(void)
                 {
                     printf("%zu + %zu = (%zu <> %zu)\n", x, y, z, a);
 
-                    fails += 1;
+                    fails++;
                 }
             }
         }
 
     if (fails == 0)
     {
-        printf("OK");
+        printf("\nOK");
     }
 
     Mat_free(ti);
@@ -196,5 +202,5 @@ int main(void)
     NN_free(nn);
     NN_free(gnn);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
