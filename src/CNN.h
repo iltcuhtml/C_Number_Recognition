@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stddef.h>
+
 #include "NN.h"
 
 void Conv2D(Mat out, const Mat in, const Mat kernel,
