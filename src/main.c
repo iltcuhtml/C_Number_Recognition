@@ -1,46 +1,74 @@
 #include <stdio.h>
+#include <stdlib.h>
 
-#include "CNN.h"
 #include "NN.h"
-#include "IMAGE_LOADER.h"
+#include "DRAW_INPUT.h"
 
 int main()
 {
-    float input_pixels[28*28];
-    load_pgm("data/user_input.pgm", input_pixels, 28*28);
+    init_SDL();
 
-    Mat input = (Mat) {
-        .rows = 28, .cols = 28, .stride = 28, .es = input_pixels
-    };
+    FILE *file = fopen("data/model.nn", "rb");
 
-    Mat kernel = Mat_load(fopen("model.cnn", "rb"));
-    Mat weights = Mat_load(fopen("model.cnn", "rb"));
-    Mat bias = Mat_load(fopen("model.cnn", "rb"));
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open model file\n");
 
-    Mat conv_out = Mat_alloc(26, 26);
-    Mat pooled = Mat_alloc(13, 13);
-    Mat flat = Mat_alloc(1, 13*13);
-    Mat out = Mat_alloc(1, 10);
+        return EXIT_FAILURE;
+    }
 
-    Conv2D(conv_out, input, kernel, 1, 0);
-    MaxPool2D(pooled, conv_out, 2, 2, 2);
-    Flatten(flat, &pooled, 1, 13, 13);
-    Mat_dot(out, flat, weights);
-    Mat_sum(out, bias);
-    Softmax(out);
+    NN nn = NN_load(file);
+    fclose(file);
 
-    printf("Prediction: \n");
+    if (nn.count == 0)
+    {
+        fprintf(stderr, "Failed to load model\n");
 
-    for (int i = 0; i < 10; i++)
-        printf("[%d] = %.2f\n", i, MAT_AT(out, 0, i));
+        cleanup_SDL();
 
-    Mat_free(kernel);
-    Mat_free(weights);
-    Mat_free(bias);
-    Mat_free(conv_out);
-    Mat_free(pooled);
-    Mat_free(flat);
-    Mat_free(out);
+        return EXIT_FAILURE;
+    }
+
+    printf("Draw digit with mouse. Press ENTER to recognize, C to clear, ESC to quit.\n");
+
+    int quit = 0;
+
+    while (!quit)
+        if (process_events(&quit))
+        {
+            int recognized = process_events(&quit);
+
+            SDL_SetRenderDrawColor(renderer_global, 255, 255, 255, 255);
+            SDL_RenderClear(renderer_global);
+            
+            SDL_RenderTexture(renderer_global, texture, NULL, NULL);
+            SDL_RenderPresent(renderer_global);
+            
+            if (recognized)
+            {
+                float* input = get_drawn_digit(renderer_global);
+
+                if (input)
+                {
+                    for (int i = 0; i < 28 * 28; i++)
+                        MAT_AT(NN_INPUT(nn), 0, i) = input[i];
+
+                    free(input);
+
+                    NN_forward(nn);
+
+                    printf("Prediction:\n");
+
+                    for (int i = 0; i < 10; i++)
+                        printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
+
+                    printf("-----------------\n");
+                }
+            }
+        }
+
+    NN_free(nn);
+    cleanup_SDL();
 
     return EXIT_SUCCESS;
 }

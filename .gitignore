@@ -8,6 +8,9 @@ test/
 *.s
 *.exe
 
+*.idx1-ubyte
+*.idx3-ubyte
+
 .vscode/
 
 else/

@@ -1,5 +1,4 @@
-#ifndef NN_H
-#define NN_H
+#pragma once
 
 #include <stdio.h>
 #include <math.h>
@@ -89,12 +88,14 @@ void NN_backprop(NN nn, NN gnn, Mat ti, Mat to);
 // gnn - gradient nn
 void NN_learn(NN nn, NN gnn, float rate);
 
+// gnn - gradient nn | ti - train input | to - train output
+float NN_accuracy(NN nn, Mat ti, Mat to);
+
+void NN_save(FILE *out, NN nn);
+NN NN_load(FILE *in);
+
 void NN_free(NN nn);
 
-#endif // NN_H
-
-#ifdef NN_IMPLEMENTATION
-#define NN_IMPLEMENTATION
 
 float sigmoidf(float x)
 {
@@ -464,6 +465,98 @@ void NN_learn(NN nn, NN gnn, float rate)
     }
 }
 
+float NN_accuracy(NN nn, Mat ti, Mat to)
+{
+    size_t correct = 0;
+
+    for (size_t i = 0; i < ti.rows; i++)
+    {
+        Mat x = Mat_row(ti, i);
+        Mat y = Mat_row(to, i);
+
+        Mat_copy(NN_INPUT(nn), x);
+        NN_forward(nn);
+
+        size_t pred = 0;
+        float max_pred = MAT_AT(NN_OUTPUT(nn), 0, 0);
+
+        for (size_t j = 1; j < NN_OUTPUT(nn).cols; j++)
+        {
+            float v = MAT_AT(NN_OUTPUT(nn), 0, j);
+
+            if (v > max_pred)
+            {
+                max_pred = v;
+                pred = j;
+            }
+        }
+
+        size_t label = 0;
+
+        for (size_t j = 0; j < y.cols; j++)
+        {
+            if (MAT_AT(y, 0, j) == 1.0f)
+            {
+                label = j;
+
+                break;
+            }
+        }
+
+        if (pred == label)
+            correct++;
+    }
+
+    return (float)correct / (float)ti.rows;
+}
+
+void NN_save(FILE *out, NN nn)
+{
+    fwrite(&nn.count, sizeof(nn.count), 1, out);
+
+    for (size_t i = 0; i < nn.count; i++)
+    {
+        Mat_save(out, nn.ws[i]);
+        Mat_save(out, nn.bs[i]);
+    }
+}
+
+NN NN_load(FILE *in)
+{
+    size_t count;
+    fread(&count, sizeof(count), 1, in);
+
+    size_t *arch = (size_t *)malloc(sizeof(size_t) * (count + 1));
+    NN_ASSERT(arch != NULL);
+
+    arch[0] = 28 * 28;
+    Mat *ws = (Mat *)malloc(sizeof(Mat) * count);
+    Mat *bs = (Mat *)malloc(sizeof(Mat) * count);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        ws[i] = Mat_load(in);
+        bs[i] = Mat_load(in);
+        arch[i + 1] = ws[i].cols; // assuming ws[i] shape is [prev_layer_size, this_layer_size]
+    }
+
+    NN nn = NN_alloc(arch, count + 1);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        Mat_copy(nn.ws[i], ws[i]);
+        Mat_copy(nn.bs[i], bs[i]);
+        Mat_free(ws[i]);
+        Mat_free(bs[i]);
+    }
+
+    free(ws);
+    free(bs);
+    free(arch);
+
+    return nn;
+}
+
 void NN_free(NN nn) {
     for (size_t i = 0; i < nn.count; i++)
     {
@@ -483,5 +576,3 @@ void NN_free(NN nn) {
     if (nn.as != NULL)
         free(nn.as);
 }
-
-#endif // NN_IMPLEMENTATION

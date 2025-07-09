@@ -1,88 +1,162 @@
-#ifndef IMAGE_LOADER_H
-#define IMAGE_LOADER_H
+#pragma once
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
 
-// Load PGM image to float array (normalized 0.0 to 1.0)
-void load_pgm(const char* filename, float* out, size_t size);
+// Load MNIST images from file path
+// Returns float* pointer to images in [count, 784] format normalized [0,1]
+// count_out: number of images loaded
+float* load_mnist_images(const char *path, int *count_out);
 
-// Load IDX image and label files
-unsigned char* load_idx_images(const char* filename, int* count, int* rows, int* cols);
-unsigned char* load_idx_labels(const char* filename, int* count);
+// Load MNIST labels from file path
+// Returns uint8_t* pointer to labels
+// count_out: number of labels loaded
+uint8_t* load_mnist_labels(const char *path, int *count_out);
 
-void load_pgm(const char* filename, float* out, size_t size)
+static uint32_t reverse_int(uint32_t i)
 {
-    FILE* f = fopen(filename, "rb");
-
-    if (!f)
-    {
-        fprintf(stderr, "Error: Cannot open PGM file %s\n", filename);
-
-        exit(EXIT_FAILURE);
-    }
-
-    char magic[3];
-    int width, height, maxval;
-    fscanf(f, "%2s\n%d %d\n%d\n", magic, &width, &height, &maxval);
-
-    if (strcmp(magic, "P5") != 0 || width * height != size)
-    {
-        fprintf(stderr, "Invalid or unsupported PGM file\n");
-
-        exit(EXIT_FAILURE);
-    }
-
-    unsigned char* pixels = (unsigned char*) malloc(size);
-    fread(pixels, 1, size, f);
-    fclose(f);
-
-    for (size_t i = 0; i < size; i++)
-        out[i] = pixels[i] / 255.0f;
-
-    free(pixels);
+    return ((i & 0xFF) << 24) |
+           ((i & 0xFF00) << 8) |
+           ((i & 0xFF0000) >> 8) |
+           ((i & 0xFF000000) >> 24);
 }
 
-unsigned char* load_idx_images(const char* filename, int* count, int* rows, int* cols)
+float* load_mnist_images(const char *path, int *count_out)
 {
-    FILE* f = fopen(filename, "rb");
+    FILE *file = fopen(path, "rb");
 
-    if (!f)
+    if (!file)
+    {
+        fprintf(stderr, "Error: cannot open image file %s\n", path);
+
         return NULL;
-    
-    uint8_t header[16];
-    fread(header, 1, 16, f);
-    
-    *count = (header[4] << 24) | (header[5] << 16) | (header[6] << 8) | header[7];
-    *rows  = (header[8] << 24) | (header[9] << 16) | (header[10] << 8) | header[11];
-    *cols  = (header[12] << 24) | (header[13] << 16) | (header[14] << 8) | header[15];
+    }
 
-    unsigned char* data = (unsigned char*) malloc((*count) * (*rows) * (*cols));
-    fread(data, 1, (*count)*(*rows)*(*cols), f);
-    fclose(f);
+    uint32_t magic = 0;
+    fread(&magic, sizeof(magic), 1, file);
+    magic = reverse_int(magic);
 
-    return data;
+    if (magic != 2051)
+    {
+        fprintf(stderr, "Error: invalid magic number in image file\n");
+
+        fclose(file);
+
+        return NULL;
+    }
+
+    uint32_t num_images = 0;
+    fread(&num_images, sizeof(num_images), 1, file);
+    num_images = reverse_int(num_images);
+
+    uint32_t rows = 0;
+    fread(&rows, sizeof(rows), 1, file);
+    rows = reverse_int(rows);
+
+    uint32_t cols = 0;
+    fread(&cols, sizeof(cols), 1, file);
+    cols = reverse_int(cols);
+
+    if (rows != 28 || cols != 28)
+    {
+        fprintf(stderr, "Error: expected 28x28 images but got %ux%u\n", rows, cols);
+
+        fclose(file);
+
+        return NULL;
+    }
+
+    *count_out = (int)num_images;
+
+    size_t img_size = rows * cols;
+
+    float *images = (float*)malloc(sizeof(float) * img_size * num_images);
+
+    if (!images)
+    {
+        fprintf(stderr, "Error: failed to allocate memory for images\n");
+
+        fclose(file);
+
+        return NULL;
+    }
+
+    for (uint32_t i = 0; i < num_images; i++)
+    {
+        unsigned char buffer[28 * 28];
+
+        if (fread(buffer, sizeof(unsigned char), img_size, file) != img_size)
+        {
+            fprintf(stderr, "Error: failed to read image %u\n", i);
+
+            free(images);
+            fclose(file);
+
+            return NULL;
+        }
+
+        // Normalize pixel values to [0, 1]
+        for (size_t j = 0; j < img_size; j++)
+            images[i * img_size + j] = buffer[j] / 255.0f;
+    }
+
+    fclose(file);
+
+    return images;
 }
 
-unsigned char* load_idx_labels(const char* filename, int* count)
+uint8_t* load_mnist_labels(const char *path, int *count_out)
 {
-    FILE* f = fopen(filename, "rb");
+    FILE *file = fopen(path, "rb");
 
-    if (!f)
+    if (!file)
+    {
+        fprintf(stderr, "Error: cannot open label file %s\n", path);
+
         return NULL;
-    
-    uint8_t header[8];
-    fread(header, 1, 8, f);
+    }
 
-    *count = (header[4] << 24) | (header[5] << 16) | (header[6] << 8) | header[7];
+    uint32_t magic = 0;
+    fread(&magic, sizeof(magic), 1, file);
+    magic = reverse_int(magic);
 
-    unsigned char* labels = (unsigned char*) malloc(*count);
-    fread(labels, 1, *count, f);
-    fclose(f);
+    if (magic != 2049)
+    {
+        fprintf(stderr, "Error: invalid magic number in label file\n");
+
+        fclose(file);
+
+        return NULL;
+    }
+
+    uint32_t num_labels = 0;
+    fread(&num_labels, sizeof(num_labels), 1, file);
+    num_labels = reverse_int(num_labels);
+
+    *count_out = (int)num_labels;
+
+    uint8_t *labels = (uint8_t*)malloc(sizeof(uint8_t) * num_labels);
+
+    if (!labels)
+    {
+        fprintf(stderr, "Error: failed to allocate memory for labels\n");
+
+        fclose(file);
+
+        return NULL;
+    }
+
+    if (fread(labels, sizeof(uint8_t), num_labels, file) != num_labels)
+    {
+        fprintf(stderr, "Error: failed to read labels\n");
+
+        free(labels);
+        fclose(file);
+
+        return NULL;
+    }
+
+    fclose(file);
 
     return labels;
 }
-
-#endif // IMAGE_LOADER_H

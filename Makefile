@@ -1,19 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Werror -Wextra -O3 -Iinclude
-
-SRCS = \
-  src/CNN.c \
-  src/image_loader.c
-
-OBJS = $(SRCS:.c=.o)
+CFLAGS = -Wall -Werror -Wextra -O3 -Iinclude -I"C:/msys64/ucrt64/include/SDL3"
+LDFLAGS = -L"C:/msys64/ucrt64/lib" -lSDL3
 
 all: train predict
 
-train: src/train.c $(SRCS)
-	$(CC) $(CFLAGS) -DNN_IMPLEMENTATION -o train src/train.c $(SRCS)
+train: $(OBJS)
+	$(CC) $(CFLAGS) -o train src/train.c $(LDFLAGS)
 
-predict: src/main.c $(SRCS)
-	$(CC) $(CFLAGS) -DNN_IMPLEMENTATION -o predict src/main.c $(SRCS)
-
-clean:
-	rm -f train predict $(OBJS)
+predict: $(OBJS)
+	$(CC) $(CFLAGS) -o predict src/main.c $(LDFLAGS)

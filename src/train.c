@@ -1,92 +1,124 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-
-#include "CNN.h"
+#include <string.h>
 #include "NN.h"
-#include "IMAGE_LOADER.h"
+#include "image_loader.h"
+
+// One-hot encode labels into Mat structure
+void labels_to_onehot(Mat labels_mat, uint8_t *labels, int count, int num_classes)
+{
+    for (int i = 0; i < count; i++)
+    {
+        for (int j = 0; j < num_classes; j++)
+            MAT_AT(labels_mat, i, j) = 0.0f;
+        
+        int lbl = labels[i];
+
+        if (lbl >= 0 && lbl < num_classes)
+            MAT_AT(labels_mat, i, lbl) = 1.0f;
+    }
+}
 
 int main()
 {
-    int count, rows, cols;
-    unsigned char* images = load_idx_images("data/train-images.idx3-ubyte", &count, &rows, &cols);
-    unsigned char* labels = load_idx_labels("data/train-labels.idx1-ubyte", &count);
+    // Paths to MNIST files (adjust paths as needed)
+    const char *train_images_path = "data/train-images.idx3-ubyte";
+    const char *train_labels_path = "data/train-labels.idx1-ubyte";
 
-    Mat kernel = Mat_alloc(3, 3); // single 3x3 conv kernel
-    Mat weights = Mat_alloc(1, 10); // FC layer weights (flatten to 10 outputs)
-    Mat bias = Mat_alloc(1, 10);
-    Mat conv_out = Mat_alloc(26, 26);
-    Mat pooled = Mat_alloc(13, 13);
-    Mat flat = Mat_alloc(1, 13*13);
-    Mat out = Mat_alloc(1, 10);
+    int image_count = 0;
+    float *raw_images = load_mnist_images(train_images_path, &image_count);
 
-    Mat_rand(kernel, -1, 1);
-    Mat_rand(weights, -1, 1);
-    Mat_fill(bias, 0);
-
-    float rate = 0.01f;
-
-    for (int epoch = 0; epoch < 1; epoch++)
+    if (!raw_images)
     {
-        float loss = 0;
+        fprintf(stderr, "Failed to load images.\n");
 
-        for (int i = 0; i < count; i++)
-        {
-            Mat input = (Mat) {
-                .rows = 28,
-                .cols = 28,
-                .stride = 28,
-                .es = (float*) malloc(28*28*sizeof(float))
-            };
-
-            for (int j = 0; j < 28*28; j++)
-                input.es[j] = images[i * 28 * 28 + j] / 255.0f;
-
-            Mat target = Mat_alloc(1, 10);
-            Mat_fill(target, 0);
-            MAT_AT(target, 0, labels[i]) = 1.0f;
-
-            Conv2D(conv_out, input, kernel, 1, 0);
-            MaxPool2D(pooled, conv_out, 2, 2, 2);
-            Flatten(flat, &pooled, 1, 13, 13);
-
-            Mat_dot(out, flat, weights);
-            Mat_sum(out, bias);
-            Softmax(out);
-
-            for (int k = 0; k < 10; k++)
-            {
-                float d = MAT_AT(out, 0, k) - MAT_AT(target, 0, k);
-                loss += d * d;
-
-                for (int j = 0; j < flat.cols; j++)
-                    MAT_AT(weights, 0, k) -= rate * d * MAT_AT(flat, 0, j);
-                
-                MAT_AT(bias, 0, k) -= rate * d;
-            }
-
-            free(input.es);
-            Mat_free(target);
-        }
-
-        printf("Epoch %d loss: %f\n", epoch, loss / count);
+        return EXIT_FAILURE;
     }
 
-    FILE* f = fopen("model.cnn", "wb");
-    Mat_save(f, kernel);
-    Mat_save(f, weights);
-    Mat_save(f, bias);
-    fclose(f);
+    int label_count = 0;
+    uint8_t *raw_labels = load_mnist_labels(train_labels_path, &label_count);
 
-    free(images);
-    free(labels);
-    Mat_free(kernel);
-    Mat_free(weights);
-    Mat_free(bias);
-    Mat_free(conv_out);
-    Mat_free(pooled);
-    Mat_free(flat);
-    Mat_free(out);
+    if (!raw_labels)
+    {
+        fprintf(stderr, "Failed to load labels.\n");
 
-    return EXIT_SUCCESS;
+        free(raw_images);
+
+        return EXIT_FAILURE;
+    }
+
+    if (image_count != label_count)
+    {
+        fprintf(stderr, "Image and label counts do not match.\n");
+
+        free(raw_images);
+        free(raw_labels);
+
+        return EXIT_FAILURE;
+    }
+
+    const int input_size = 28 * 28;
+    const int num_classes = 10;
+    const int sample_count = image_count;
+
+    // Prepare input Mat
+    Mat train_inputs = Mat_alloc(sample_count, input_size);
+
+    // Copy raw image data into train_inputs
+    for (int i = 0; i < sample_count; i++)
+        for (int j = 0; j < input_size; j++)
+            MAT_AT(train_inputs, i, j) = raw_images[i * input_size + j];
+
+    // Prepare output Mat (one-hot labels)
+    Mat train_labels = Mat_alloc(sample_count, num_classes);
+    labels_to_onehot(train_labels, raw_labels, sample_count, num_classes);
+
+    free(raw_images);
+    free(raw_labels);
+
+    // Neural network architecture: input -> hidden -> output
+    size_t arch[] = { input_size, 16, num_classes };
+    NN nn = NN_alloc(arch, sizeof(arch) / sizeof(*arch));
+    NN gnn = NN_alloc(arch, sizeof(arch) / sizeof(*arch));
+
+    NN_rand(nn, -1.0f, 1.0f);
+
+    const int epochs = 500;
+    const float learning_rate = 1.0f;
+
+    for (int epoch = 1; epoch <= epochs; epoch++)
+    {
+        NN_backprop(nn, gnn, train_inputs, train_labels);
+        NN_learn(nn, gnn, learning_rate);
+
+        if (epoch % 10 == 0)
+        {
+            float cost = NN_cost(nn, train_inputs, train_labels);
+            float acc = NN_accuracy(nn, train_inputs, train_labels);
+
+            printf("Epoch %d, cost = %.4f, accuracy = %.4f\n", epoch, cost, acc);
+        }
+    }
+
+    FILE *file = fopen("model.nn", "wb");
+
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open file for saving model\n");
+    }
+    else
+    {
+        NN_save(file, nn);
+        fclose(file);
+
+        printf("Model saved to model.nn\n");
+    }
+
+    // Free memory
+    NN_free(nn);
+    NN_free(gnn);
+    Mat_free(train_inputs);
+    Mat_free(train_labels);
+
+    return 0;
 }
