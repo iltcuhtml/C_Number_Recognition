@@ -1,36 +1,19 @@
 CC = gcc
+CFLAGS = -Wall -Werror -Wextra -O3 -Iinclude
 
-C_SOURCE = src
-H_SOURCE = src
+SRCS = \
+  src/CNN.c \
+  src/image_loader.c
 
-OBJECT = obj
-EXECUTABLE = exe
+OBJS = $(SRCS:.c=.o)
 
-INCLUDE_PATH = C:/raylib/w64devkit/x86_64-w64-mingw32/include
-LIBRARY_PATH = C:/raylib/w64devkit/x86_64-w64-mingw32/lib
+all: train predict
 
-CFLAGS = -Wall -Werror -Wextra -O3 -I$(INCLUDE_PATH)
-LDFLAGS = -L$(LIBRARY_PATH) -lraylib
+train: src/train.c $(SRCS)
+	$(CC) $(CFLAGS) -DNN_IMPLEMENTATION -o train src/train.c $(SRCS)
 
-$(OBJECT):
-	mkdir $(OBJECT)
+predict: src/main.c $(SRCS)
+	$(CC) $(CFLAGS) -DNN_IMPLEMENTATION -o predict src/main.c $(SRCS)
 
-$(EXECUTABLE):
-	mkdir $(EXECUTABLE)
-
-main: $(EXECUTABLE)/main.exe
-
-$(EXECUTABLE)/main.exe: $(OBJECT)/main.o | $(EXECUTABLE)
-	$(CC) $(OBJECT)/main.o -o $(EXECUTABLE)/main.exe $(LDFLAGS)
-	strip $(EXECUTABLE)/main.exe
-
-$(OBJECT)/main.o: $(C_SOURCE)/main.c | $(OBJECT)
-	$(CC) $(CFLAGS) -c $(C_SOURCE)/main.c -o $(OBJECT)/main.o
-
-obj_clean:
-	del /Q $(OBJECT)\*
-
-exe_clean:
-	del /Q $(EXECUTABLE)\*
-
-clean: obj_clean exe_clean
+clean:
+	rm -f train predict $(OBJS)
