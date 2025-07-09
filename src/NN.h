@@ -115,7 +115,7 @@ Mat Mat_alloc(size_t rows, size_t cols)
 
     m.stride = cols;
 
-    m.es = (float*) malloc(sizeof(*m.es) * rows * cols);
+    m.es = (float*) NN_MALLOC(sizeof(*m.es) * rows * cols);
 
     NN_ASSERT(m.es != NULL);
 
@@ -137,9 +137,7 @@ void Mat_save(FILE *out, Mat m)
         size_t written = 0;
 
         while (written < m.cols)
-        {
             written += fwrite(row + written, sizeof(*row), m.cols - written, out);
-        }
     }
 
 }
@@ -159,9 +157,7 @@ Mat Mat_load(FILE *in)
     size_t n = fread(m.es, sizeof(*m.es), rows * cols, in);
 
     while (n < rows * cols && !ferror(in))
-    {
         n += fread(m.es + n, sizeof(*m.es), rows * cols - n, in);
-    }
 
     return m;
 }
@@ -170,18 +166,14 @@ void Mat_rand(Mat m, float low, float high)
 {
     for (size_t i = 0; i < m.rows; i++)
         for (size_t ii = 0; ii < m.cols; ii++)
-        {
             MAT_AT(m, i, ii) = rand_float() * (high - low) + low;
-        }
 }
 
 void Mat_fill(Mat m, float x)
 {
     for (size_t i = 0; i < m.rows; i++)
         for (size_t ii = 0; ii < m.cols; ii++)
-        {
             MAT_AT(m, i, ii) = x;
-        }
 }
 
 void Mat_print(Mat m, const char *name, size_t padding)
@@ -191,9 +183,7 @@ void Mat_print(Mat m, const char *name, size_t padding)
     for (size_t i = 0; i < m.rows; i++)
     {
         for (size_t ii = 0; ii < m.cols; ii++)
-        {
             printf("%*s    %f", (int) padding, "", MAT_AT(m, i, ii));
-        }
 
         printf("\n");
     }
@@ -220,9 +210,7 @@ void Mat_copy(Mat dst, Mat src)
 
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t ii = 0; ii < dst.cols; ii++)
-        {
             MAT_AT(dst, i, ii) = MAT_AT(src, i, ii);
-        }
 }
 
 void Mat_sum(Mat dst, Mat m)
@@ -232,9 +220,7 @@ void Mat_sum(Mat dst, Mat m)
 
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t ii = 0; ii < dst.cols; ii++)
-        {
             MAT_AT(dst, i, ii) += MAT_AT(m, i, ii);
-        }
 }
 
 void Mat_dot(Mat dst, Mat m1, Mat m2)
@@ -249,9 +235,7 @@ void Mat_dot(Mat dst, Mat m1, Mat m2)
             MAT_AT(dst, i, ii) = 0;
 
             for (size_t iii = 0; iii < m1.cols; iii++)
-            {
                 MAT_AT(dst, i, ii) += MAT_AT(m1, i, iii) * MAT_AT(m2, iii, ii);
-            }
         }
 }
 
@@ -259,14 +243,13 @@ void Mat_sig(Mat m)
 {
     for (size_t i = 0; i < m.rows; i++)
         for (size_t ii = 0; ii < m.cols; ii++)
-        {
             MAT_AT(m, i, ii) = sigmoidf(MAT_AT(m, i, ii));
-        }
 }
 
 void Mat_free(Mat m)
 {
-    free(m.es);
+    if (m.es != NULL)
+        free(m.es);
 }
 
 NN NN_alloc(size_t *arch, size_t arch_count)
@@ -424,14 +407,10 @@ void NN_backprop(NN nn, NN gnn, Mat ti, Mat to)
         NN_forward(nn);
 
         for (size_t ii = 0; ii <= nn.count; ii++)
-        {
             Mat_fill(gnn.as[ii], 0);
-        }
 
         for (size_t ii = 0; ii < to.cols; ii++)
-        {
             MAT_AT(NN_OUTPUT(gnn), 0, ii) = MAT_AT(NN_OUTPUT(nn), 0, ii) - MAT_AT(to, i, ii);
-        }
 
         for (size_t iv = nn.count; iv > 0; iv--)
             for (size_t ii = 0; ii < nn.as[iv].cols; ii++)
@@ -463,15 +442,11 @@ void NN_backprop(NN nn, NN gnn, Mat ti, Mat to)
     {
         for (size_t ii = 0; ii < gnn.ws[i].rows; ii++)
             for (size_t iii = 0; iii < gnn.ws[i].cols; iii++)
-            {
                 MAT_AT(gnn.ws[i], ii, iii) /= ti.rows;
-            }
 
         for (size_t ii = 0; ii < gnn.bs[i].rows; ii++)
             for (size_t iii = 0; iii < gnn.bs[i].cols; iii++)
-            {
                 MAT_AT(gnn.bs[i], ii, iii) /= ti.rows;
-            }
     }
 }
 
@@ -481,15 +456,11 @@ void NN_learn(NN nn, NN gnn, float rate)
     {
         for (size_t ii = 0; ii < nn.ws[i].rows; ii++)
             for (size_t iii = 0; iii < nn.ws[i].cols; iii++)
-            {
                 MAT_AT(nn.ws[i], ii, iii) -= MAT_AT(gnn.ws[i], ii, iii) * rate;
-            }
 
         for (size_t ii = 0; ii < nn.bs[i].rows; ii++)
             for (size_t iii = 0; iii < nn.bs[i].cols; iii++)
-            {    
                 MAT_AT(nn.bs[i], ii, iii) -= MAT_AT(gnn.bs[i], ii, iii) * rate;
-            }
     }
 }
 
@@ -503,9 +474,14 @@ void NN_free(NN nn) {
 
     Mat_free(nn.as[0]);
 
-    free(nn.ws);
-    free(nn.bs);
-    free(nn.as);
+    if (nn.ws != NULL)
+        free(nn.ws);
+
+    if (nn.bs != NULL)
+        free(nn.bs);
+
+    if (nn.as != NULL)
+        free(nn.as);
 }
 
 #endif // NN_IMPLEMENTATION
