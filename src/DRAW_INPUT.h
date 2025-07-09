@@ -102,7 +102,7 @@ int process_events(int *quit)
 
                     SDL_SetRenderTarget(renderer_global, texture);
                     SDL_SetRenderDrawColor(renderer_global, 0, 0, 0, 255);
-                    SDL_FRect rect = { x - 8.0f, y - 8.0f, 16.0f, 16.0f };
+                    SDL_FRect rect = { x - 24.0f, y - 24.0f, 48.0f, 48.0f };
                     SDL_RenderFillRect(renderer_global, &rect);
                     SDL_SetRenderTarget(renderer_global, NULL);
                 }
@@ -159,7 +159,7 @@ float* get_drawn_digit(SDL_Renderer* renderer)
                     const SDL_PixelFormatDetails* fmt_details = SDL_GetPixelFormatDetails(surface->format);
                     SDL_GetRGB(pixel, fmt_details, NULL, &r, &g, &b);
                     
-                    int luminance = (int)(0.299 * r + 0.587 * g + 0.114 * b);
+                    int luminance = (int) (0.299f * r + 0.587f * g + 0.114f * b);
                     sum += luminance;
                 }
 
