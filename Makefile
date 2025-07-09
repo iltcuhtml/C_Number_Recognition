@@ -10,7 +10,7 @@ INCLUDE_PATH = C:/raylib/w64devkit/x86_64-w64-mingw32/include
 LIBRARY_PATH = C:/raylib/w64devkit/x86_64-w64-mingw32/lib
 
 CFLAGS = -Wall -Werror -Wextra -O3 -I$(INCLUDE_PATH)
-LDFLAGS = -lraylib -static-libgcc -static-libstdc++
+LDFLAGS = -L$(LIBRARY_PATH) -lraylib
 
 $(OBJECT):
 	mkdir $(OBJECT)
