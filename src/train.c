@@ -77,14 +77,14 @@ int main()
     free(raw_labels);
 
     // Neural network architecture: input -> hidden -> output
-    size_t arch[] = { input_size, 16, num_classes };
+    size_t arch[] = { input_size, 32, num_classes };
     NN nn = NN_alloc(arch, sizeof(arch) / sizeof(*arch));
     NN gnn = NN_alloc(arch, sizeof(arch) / sizeof(*arch));
 
     NN_rand(nn, -1.0f, 1.0f);
 
-    const int epochs = 500;
-    const float learning_rate = 1.0f;
+    const int epochs = 1000;
+    const float learning_rate = 0.5f;
 
     for (int epoch = 1; epoch <= epochs; epoch++)
     {

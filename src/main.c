@@ -33,39 +33,36 @@ int main()
 
     int quit = 0;
 
-    while (!quit)
-        if (process_events(&quit))
+    while (!quit){
+        int recognized = process_events(&quit);
+
+        SDL_SetRenderDrawColor(renderer_global, 255, 255, 255, 255);
+        SDL_RenderClear(renderer_global);
+        
+        SDL_RenderTexture(renderer_global, texture, NULL, NULL);
+        SDL_RenderPresent(renderer_global);
+        
+        if (recognized)
         {
-            int recognized = process_events(&quit);
-
-            SDL_SetRenderDrawColor(renderer_global, 255, 255, 255, 255);
-            SDL_RenderClear(renderer_global);
+            float* input = get_drawn_digit(renderer_global);
             
-            SDL_RenderTexture(renderer_global, texture, NULL, NULL);
-            SDL_RenderPresent(renderer_global);
-            
-            if (recognized)
+            if (input)
             {
-                float* input = get_drawn_digit(renderer_global);
+                for (int i = 0; i < 28 * 28; i++)
+                    MAT_AT(NN_INPUT(nn), 0, i) = input[i];
 
-                if (input)
-                {
-                    for (int i = 0; i < 28 * 28; i++)
-                        MAT_AT(NN_INPUT(nn), 0, i) = input[i];
+                free(input);
+                NN_forward(nn);
 
-                    free(input);
+                printf("Prediction:\n");
 
-                    NN_forward(nn);
-
-                    printf("Prediction:\n");
-
-                    for (int i = 0; i < 10; i++)
-                        printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
-
-                    printf("-----------------\n");
-                }
+                for (int i = 0; i < 10; i++)
+                    printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
+                
+                printf("-----------------\n");
             }
         }
+    }
 
     NN_free(nn);
     cleanup_SDL();
