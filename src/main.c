@@ -56,19 +56,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
             hwndButtonClear = CreateWindow(
                 "BUTTON", "Clear", btnStyle, 
-                20, 20, 80, 30,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), 
+                (int)(CANVAS_Y + CANVAS_SIZE * 1.03125f),
+                (int)(CANVAS_SIZE / 4), 
+                (int)(CANVAS_SIZE / 8), 
                 hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
             );
 
             hwndButtonPredict = CreateWindow(
                 "BUTTON", "Predict", btnStyle, 
-                110, 20, 80, 30,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), 
+                (int)(CANVAS_Y + CANVAS_SIZE * 1.03125f), 
+                (int)(CANVAS_SIZE / 4), 
+                (int)(CANVAS_SIZE / 8), 
                 hwnd, (HMENU)ID_BUTTON_PREDICT, NULL, NULL
             );
 
             hwndButtonQuit = CreateWindow(
                 "BUTTON", "Quit", btnStyle, 
-                200, 20, 80, 30,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), 
+                (int)(CANVAS_Y + CANVAS_SIZE * 1.03125f),
+                (int)(CANVAS_SIZE / 4), 
+                (int)(CANVAS_SIZE / 8), 
                 hwnd, (HMENU)ID_BUTTON_QUIT, NULL, NULL
             );
 
