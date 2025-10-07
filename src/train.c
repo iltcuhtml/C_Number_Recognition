@@ -4,59 +4,8 @@
 #include "NN.h"
 #include "image_loader.h"
 
-// One-hot encode labels into Mat structure
-void labels_to_onehot(Mat labels_mat, uint8_t *labels, int count, int num_classes)
-{
-    for (int i = 0; i < count; i++)
-    {
-        for (int j = 0; j < num_classes; j++)
-            MAT_AT(labels_mat, i, j) = 0.0f;
-        
-        int lbl = labels[i];
-
-        if (lbl >= 0 && lbl < num_classes)
-            MAT_AT(labels_mat, i, lbl) = 1.0f;
-    }
-}
-
 int main()
 {
-    // Paths to MNIST files (adjust paths as needed)
-    const char *train_images_path = "data/train-images.idx3-ubyte";
-    const char *train_labels_path = "data/train-labels.idx1-ubyte";
-
-    int image_count = 0;
-    float *raw_images = load_mnist_images(train_images_path, &image_count);
-
-    if (!raw_images)
-    {
-        fprintf(stderr, "Failed to load images.\n");
-
-        return EXIT_FAILURE;
-    }
-
-    int label_count = 0;
-    uint8_t *raw_labels = load_mnist_labels(train_labels_path, &label_count);
-
-    if (!raw_labels)
-    {
-        fprintf(stderr, "Failed to load labels.\n");
-
-        free(raw_images);
-
-        return EXIT_FAILURE;
-    }
-
-    if (image_count != label_count)
-    {
-        fprintf(stderr, "Image and label counts do not match.\n");
-
-        free(raw_images);
-        free(raw_labels);
-
-        return EXIT_FAILURE;
-    }
-
     const int input_size = 28 * 28;
     const int num_classes = 10;
     const int sample_count = image_count;
@@ -83,7 +32,7 @@ int main()
 
     NN_rand(nn, -1.0f, 1.0f);
 
-    const int epochs = 1000;
+    const int epochs = 10;
     const float learning_rate = 0.5f;
 
     for (int epoch = 1; epoch <= epochs; epoch++)

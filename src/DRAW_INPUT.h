@@ -8,6 +8,10 @@
 #include <math.h>
 #include <windows.h>
 
+#define TYPE_ERROR      1
+#define TYPE_WARNING    2
+#define TYPE_INFO       3
+
 uint16_t SCREEN_WIDTH, SCREEN_HEIGHT,
          SCREEN_STANDARD,
          CANVAS_SIZE, CANVAS_X, CANVAS_Y,
@@ -18,15 +22,36 @@ void SetScreenConstants(int screen_width, int screen_height)
     SCREEN_WIDTH  = (uint16_t)screen_width;
     SCREEN_HEIGHT = (uint16_t)screen_height;
 
-    SCREEN_STANDARD = SCREEN_WIDTH > SCREEN_HEIGHT ? SCREEN_HEIGHT : SCREEN_WIDTH;
 
-    CANVAS_SIZE = SCREEN_STANDARD / 2;
+    if (SCREEN_WIDTH > SCREEN_HEIGHT)
+    {
+        CANVAS_SIZE = (SCREEN_WIDTH / 4 < SCREEN_HEIGHT) ? SCREEN_WIDTH / 4 : SCREEN_HEIGHT;
 
-    CANVAS_X = (SCREEN_WIDTH - CANVAS_SIZE * 3) / 2;
-    CANVAS_Y = (SCREEN_HEIGHT - CANVAS_SIZE) / 2;
+        CANVAS_X = (SCREEN_WIDTH - CANVAS_SIZE * 3) / 4;
+        CANVAS_Y = (SCREEN_HEIGHT - CANVAS_SIZE) / 2;
+    }
+    else
+    {
+        CANVAS_SIZE = (SCREEN_HEIGHT / 4 < SCREEN_WIDTH) ? SCREEN_HEIGHT / 4 : SCREEN_WIDTH;
+
+        CANVAS_X = (SCREEN_WIDTH - CANVAS_SIZE) / 2;
+        CANVAS_Y = (SCREEN_HEIGHT - CANVAS_SIZE * 3) / 4;
+    }
 
     CELL_LEN = 28;
     CELL_SIZE = CANVAS_SIZE / CELL_LEN;
+}
+
+static void ShowMessage(const char* message, int type)
+{
+    if (type == TYPE_ERROR)
+        MessageBoxA(NULL, message, "Error", MB_ICONERROR | MB_OK);
+
+    else if (type == TYPE_WARNING)
+        MessageBoxA(NULL, message, "Warning", MB_ICONWARNING | MB_OK);
+
+	else if (type == TYPE_INFO)
+        MessageBox(NULL, message, "Info", MB_ICONINFORMATION | MB_OK);
 }
 
 inline void ClearCanvas(uint8_t* data)
@@ -38,20 +63,21 @@ inline void ClearCanvas(uint8_t* data)
 void DrawInCanvas(HDC hdc, uint8_t* data)
 {
     static uint32_t* dib = NULL;
-    static int dib_size = 0;
+    static int dib_pixels = 0;
 
-    if (CANVAS_SIZE <= 0) return;
+    if (CANVAS_SIZE <= 0 || CELL_SIZE <= 0 || data == NULL) return;
 
-    if (dib_size != CANVAS_SIZE)
+    int total_pixels = CANVAS_SIZE * CANVAS_SIZE;
+
+    if (dib_pixels != total_pixels)
     {
         free(dib);
 
-        dib = (uint32_t*) malloc(sizeof(uint32_t) * CANVAS_SIZE * CANVAS_SIZE);
-        dib_size = CANVAS_SIZE;
+        dib = (uint32_t*) malloc(sizeof(uint32_t) * total_pixels);
+        dib_pixels = total_pixels;
     }
 
-    if (dib == NULL)
-        return;
+    if (dib == NULL) return;
 
     for (int py = 0; py < CANVAS_SIZE; py++)
     {
@@ -81,7 +107,8 @@ void DrawInCanvas(HDC hdc, uint8_t* data)
 
     if (dib != NULL)
     {
-        SetDIBitsToDevice(hdc,
+        SetDIBitsToDevice(
+            hdc,
             0, 0, 
             CANVAS_SIZE, CANVAS_SIZE, 
             0, 0, 

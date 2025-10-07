@@ -12,17 +12,14 @@
 
 #define DEBUG
 
-#define ID_BUTTON_CLEAR   1001
-#define ID_BUTTON_PREDICT 1002
-#define ID_BUTTON_QUIT    1003
+#define ID_BUTTON_CLEAR     1001
+#define ID_BUTTON_SAVE      1002
+#define ID_BUTTON_PREDICT   1003
+#define ID_BUTTON_QUIT      1004
 
 NN nn;
+uint8_t nn_initialized = 0;
 uint8_t quit = 0;
-
-static void ShowErrorMessage(const char* message)
-{
-    MessageBoxA(NULL, message, "Error", MB_ICONERROR | MB_OK);
-}
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -31,6 +28,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     static HGDIOBJ oldBitmap = NULL;
 
     static HWND hwndButtonClear = NULL;
+    static HWND hwndButtonSave = NULL;
     static HWND hwndButtonPredict = NULL;
     static HWND hwndButtonQuit = NULL;
 
@@ -54,30 +52,39 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
             DWORD btnStyle = WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON;
 
+            int btnWidth = (int)(CANVAS_SIZE / 4);
+            int btnHeight = (int)(CANVAS_SIZE / 8);
+            int btnY = (int)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
+
             hwndButtonClear = CreateWindow(
                 "BUTTON", "Clear", btnStyle, 
-                (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), 
-                (int)(CANVAS_Y + CANVAS_SIZE * 1.03125f),
-                (int)(CANVAS_SIZE / 4), 
-                (int)(CANVAS_SIZE / 8), 
+                (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), btnY,
+                btnWidth, btnHeight, 
                 hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
             );
 
+            hwndButtonSave = CreateWindow(
+                "BUTTON", "Save", btnStyle,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                btnWidth, btnHeight,
+                hwnd, (HMENU)ID_BUTTON_SAVE, NULL, NULL
+            );
+
+            if (nn_initialized) ShowWindow(hwndButtonSave, SW_HIDE);
+
             hwndButtonPredict = CreateWindow(
-                "BUTTON", "Predict", btnStyle, 
-                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), 
-                (int)(CANVAS_Y + CANVAS_SIZE * 1.03125f), 
-                (int)(CANVAS_SIZE / 4), 
-                (int)(CANVAS_SIZE / 8), 
+                "BUTTON", "Predict", btnStyle,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                btnWidth, btnHeight,
                 hwnd, (HMENU)ID_BUTTON_PREDICT, NULL, NULL
             );
 
+            if (!nn_initialized) ShowWindow(hwndButtonPredict, SW_HIDE);
+
             hwndButtonQuit = CreateWindow(
                 "BUTTON", "Quit", btnStyle, 
-                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), 
-                (int)(CANVAS_Y + CANVAS_SIZE * 1.03125f),
-                (int)(CANVAS_SIZE / 4), 
-                (int)(CANVAS_SIZE / 8), 
+                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
+                btnWidth, btnHeight, 
                 hwnd, (HMENU)ID_BUTTON_QUIT, NULL, NULL
             );
 
@@ -110,6 +117,44 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             ReleaseDC(hwnd, hdc);
 
             DrawInCanvas(hMemDC, data);
+
+            if (hwndButtonClear && hwndButtonPredict && hwndButtonQuit)
+            {
+                int btnWidth = (int)(CANVAS_SIZE / 4);
+                int btnHeight = (int)(CANVAS_SIZE / 8);
+                int btnY = (int)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
+
+                MoveWindow(
+                    hwndButtonClear,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), btnY,
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+
+                MoveWindow(
+                    hwndButtonSave,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+
+                MoveWindow(
+                    hwndButtonPredict,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+
+                MoveWindow(
+                    hwndButtonQuit,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+            }
+
+            InvalidateRect(hwnd, NULL, TRUE);
+            UpdateWindow(hwnd);
 
             return 0;
         }
@@ -164,24 +209,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                 case ID_BUTTON_PREDICT:
                 {
-                    /* if (hMemDC != NULL && hBitmap != NULL)
+                    if (data != NULL)
                     {
-                        if (input)
-                        {
-                            for (int i = 0; i < CELL_LEN * CELL_LEN; i++)
-                                MAT_AT(NN_INPUT(nn), 0, i) = input[i];
+                        for (int i = 0; i < CELL_LEN * CELL_LEN; i++)
+                            MAT_AT(NN_INPUT(nn), 0, i) = data[i];
 
-                            free(input);
+                        NN_forward(nn);
+                        printf("Prediction:\n");
 
-                            NN_forward(nn);
-                            printf("Prediction:\n");
+                        for (int i = 0; i < 10; i++)
+                            printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
 
-                            for (int i = 0; i < 10; i++)
-                                printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
-
-                            printf("-----------------\n");
-                        }
-                    } */
+                        printf("-----------------\n");
+                    }
 
                     break;
                 }
@@ -204,7 +244,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
 
-            if (hMemDC != NULL)
+            if (hMemDC != NULL && CANVAS_SIZE > 0)
                 BitBlt(hdc, CANVAS_X, CANVAS_Y, CANVAS_SIZE, CANVAS_SIZE, hMemDC, 0, 0, SRCCOPY);
 
             EndPaint(hwnd, &ps);
@@ -251,25 +291,33 @@ int WINAPI WinMain(
     (void)hPrevInstance;
     (void)lpCmdLine;
 
-    // 모델 파일 불러오기
-    /*FILE* file = fopen("data/model.nn", "rb");
-    if (!file)
+    FILE* file = fopen("data/model.nn", "rb");
+    
+    if (file)
     {
-        MessageBox(NULL, "Failed to open model.nn", "Error", MB_ICONERROR);
-        return EXIT_FAILURE;
+        nn = NN_load(file);
+
+        fclose(file);
+
+        if (nn.count == 0)
+        {
+            ShowMessage("Failed to load neural network model", TYPE_ERROR);
+            ShowMessage("Prediction will be disabled.", TYPE_INFO);
+
+            NN_free(nn);
+            ZeroMemory(&nn, sizeof(nn));
+        }
+        else
+            nn_initialized = 1;
     }
-    nn = NN_load(file);
-    fclose(file);
-
-    if (nn.count == 0)
+    else
     {
-        MessageBox(NULL, "Failed to load neural network model", "Error", MB_ICONERROR);
-        return EXIT_FAILURE;
-    }*/
+        ShowMessage("Could not open 'data/model.nn'.", TYPE_ERROR);
+        ShowMessage("Prediction will be disabled.", TYPE_INFO);
 
-    printf("Draw digit with mouse.\nPress ENTER to recognize, C to clear, ESC to quit.\n");
+        ZeroMemory(&nn, sizeof(nn));
+    }
 
-    // 윈도우 등록 및 생성
     WNDCLASS wc = { 0 };
     
     wc.style = 0;
@@ -287,35 +335,43 @@ int WINAPI WinMain(
     wc.lpszClassName = "Number_Recognition";
 
     if (!RegisterClass(&wc))
+    {
+        if (nn_initialized)
+        {
+            NN_free(nn);
+            ZeroMemory(&nn, sizeof(nn));
+        }
+
         return EXIT_FAILURE;
+    }
 
-    SetScreenConstants(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+    SetScreenConstants(1600, 900);
 
-#ifdef DEBUG
+
     HWND hWnd = CreateWindow(
         "Number_Recognition", "Number Recognition",
         WS_SIZEBOX,
         0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
         NULL, NULL, hInstance, NULL
     );
-#else
-    HWND hWnd = CreateWindow(
-        "Number_Recognition", "Number Recognition",
-        WS_POPUP,
-        0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
-        NULL, NULL, hInstance, NULL
-    );
-#endif
 
     if (!hWnd)
     {
-        ShowErrorMessage("Failed to create window");
+        ShowMessage("Failed to create window", TYPE_ERROR);
+
+        if (nn_initialized)
+        {
+            NN_free(nn);
+            ZeroMemory(&nn, sizeof(nn));
+        }
 
         return EXIT_FAILURE;
     }
 
-#ifndef DEBUG
-    FreeConsole();
+#ifdef DEBUG
+    #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
+#else
+	FreeConsole();
 #endif
 
     ShowWindow(hWnd, nCmdShow);
@@ -328,7 +384,11 @@ int WINAPI WinMain(
         DispatchMessage(&msg);
     }
 
-    //NN_free(nn);
+    if (nn_initialized)
+    {
+        NN_free(nn);
+        ZeroMemory(&nn, sizeof(nn));
+    }
 
     return EXIT_SUCCESS;
 }
