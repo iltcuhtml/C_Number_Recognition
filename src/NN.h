@@ -1,296 +1,360 @@
 #pragma once
 
 #include <stdio.h>
-#include <math.h>
+#include <stdlib.h>
 #include <stdint.h>
+#include <math.h>
+#include <float.h>
+#include <assert.h>
 #include <string.h>
 
-#ifndef NN_MALLOC
-#include <stdlib.h>
-#define NN_MALLOC malloc
-#endif // NN_MALLOC
+// -------------------------
+// Utilities
+// -------------------------
+float rand_float(void)
+{
+    return (float)rand() / (float)RAND_MAX;
+}
 
-#ifndef NN_ASSERT
-#include <assert.h>
-#define NN_ASSERT assert
-#endif // NN_ASSERT
+float sigmoidf(float x)
+{
+    return 1.0f / (1.0f + expf(-x));
+}
 
-#define ARRAY_LEN(xs) sizeof((xs)) / sizeof((xs)[0])
+float dsigmoid(float y)
+{
+    return y * (1.0f - y);
+}
 
-float sigmoidf(float x);
+float relu(float x)
+{
+    return x > 0.0f ? x : 0.0f;
+}
 
-float rand_float(void);
+float drelu(float x)
+{
+    return x > 0.0f ? 1.0f : 0.0f;
+}
 
+// -------------------------
+// Matrix
+// -------------------------
 typedef struct
 {
     size_t rows;
     size_t cols;
-
     size_t stride;
 
-    float *es;
+    float* es;
 } Mat;
 
-#define MAT_AT(m, row, col) (m).es[(row) * (m).stride + (col)]
-
-Mat Mat_alloc(size_t rows, size_t cols);
-
-void Mat_save(FILE *out, Mat m);
-Mat Mat_load(FILE *in);
-
-void Mat_rand(Mat m, float low, float high);
-void Mat_fill(Mat m, float x);
-
-void Mat_print(Mat m, const char *name, size_t padding);
-#define MAT_PRINT(m) Mat_print(m, #m, 0)
-
-Mat Mat_row(Mat m, size_t row);
-void Mat_copy(Mat dst, Mat src);
-
-void Mat_sum(Mat dst, Mat m);
-void Mat_dot(Mat dst, Mat m1, Mat m2);
-
-void Mat_sig(Mat m);
-
-void Mat_free(Mat m);
-
-typedef struct
-{
-    size_t count;
-
-    Mat *ws;
-    Mat *bs;
-    Mat *as; // The amount of activations is count + 1
-} NN;
-
-#define NN_INPUT(nn) (nn).as[0]
-#define NN_OUTPUT(nn) (nn).as[(nn).count]
-
-NN NN_alloc(size_t *arch, size_t arch_count);
-
-void NN_zero(NN nn);
-void NN_rand(NN nn, float low, float high);
-
-void NN_print(NN nn, const char *name);
-#define NN_PRINT(nn) NN_print(nn, #nn)
-
-void NN_forward(NN nn);
-
-// ti - train input | to - train output
-float NN_cost(NN nn, Mat ti, Mat to);
-
-// gnn - gradient nn | ti - train input | to - train output
-void NN_finite_diff(NN nn, NN gnn, Mat ti, Mat to, float eps);
-
-// gnn - gradient nn | ti - train input | to - train output
-void NN_backprop(NN nn, NN gnn, Mat ti, Mat to);
-
-// gnn - gradient nn
-void NN_learn(NN nn, NN gnn, float rate);
-
-// gnn - gradient nn | ti - train input | to - train output
-float NN_accuracy(NN nn, Mat ti, Mat to);
-
-void NN_save(FILE *out, NN nn);
-NN NN_load(FILE *in);
-
-void NN_free(NN nn);
-
-
-float sigmoidf(float x)
-{
-    return 1.0F / (1.0F + expf(-x));
-}
-
-float rand_float(void)
-{
-    return (float) rand() / (float) RAND_MAX;
-}
+#define MAT_AT(m,r,c) (m).es[(r)*(m).stride + (c)]
 
 Mat Mat_alloc(size_t rows, size_t cols)
 {
-    Mat m = { 0 };
+    Mat m = { rows, cols, cols, malloc(sizeof(float) * rows * cols) };
 
-    m.rows = rows;
-    m.cols = cols;
-
-    m.stride = cols;
-
-    m.es = (float*) NN_MALLOC(sizeof(*m.es) * rows * cols);
-    NN_ASSERT(m.es != NULL);
+    assert(m.es != NULL);
 
     return m;
 }
 
-void Mat_save(FILE* out, Mat m)
+void Mat_free(Mat m)
 {
-    const char* magic = "nn.h.mat";
-    fwrite(magic, 1, strlen(magic), out);
-
-    fwrite(&m.rows, sizeof(m.rows), 1, out);
-    fwrite(&m.cols, sizeof(m.cols), 1, out);
-
-    for (size_t i = 0; i < m.rows; i++)
-    {
-        const float* row = &MAT_AT(m, i, 0);
-
-        size_t written = 0;
-        while (written < m.cols)
-            written += fwrite(row + written, sizeof(*row), m.cols - written, out);
-    }
-}
-
-Mat Mat_load(FILE* in)
-{
-    char magic[8];
-    fread(magic, 1, 8, in);
-    NN_ASSERT(memcmp(magic, "nn.h.mat", 8) == 0);
-
-    size_t rows, cols;
-    fread(&rows, sizeof(rows), 1, in);
-    fread(&cols, sizeof(cols), 1, in);
-
-    Mat m = Mat_alloc(rows, cols);
-
-    size_t n = fread(m.es, sizeof(*m.es), rows * cols, in);
-
-    while (n < rows * cols && !ferror(in))
-        n += fread(m.es + n, sizeof(*m.es), rows * cols - n, in);
-
-    return m;
-}
-
-void Mat_rand(Mat m, float low, float high)
-{
-    for (size_t i = 0; i < m.rows; i++)
-        for (size_t ii = 0; ii < m.cols; ii++)
-            MAT_AT(m, i, ii) = rand_float() * (high - low) + low;
+    if (m.es)
+        free(m.es);
 }
 
 void Mat_fill(Mat m, float x)
 {
     for (size_t i = 0; i < m.rows; i++)
-        for (size_t ii = 0; ii < m.cols; ii++)
-            MAT_AT(m, i, ii) = x;
-}
-
-void Mat_print(Mat m, const char *name, size_t padding)
-{
-    printf("\n%*s%s = [\n", (int) padding, "", name);
-
-    for (size_t i = 0; i < m.rows; i++)
-    {
-        for (size_t ii = 0; ii < m.cols; ii++)
-            printf("%*s    %f", (int) padding, "", MAT_AT(m, i, ii));
-
-        printf("\n");
-    }
-
-    printf("%*s]\n", (int) padding, "");
-}
-
-Mat Mat_row(Mat m, size_t row)
-{
-    return (Mat) {
-        .rows = 1, 
-        .cols = m.cols, 
-
-        .stride = m.stride, 
-
-        .es = &MAT_AT(m, row, 0)
-    };
+        for (size_t j = 0; j < m.cols; j++)
+            MAT_AT(m, i, j) = x;
 }
 
 void Mat_copy(Mat dst, Mat src)
 {
-    NN_ASSERT(dst.rows == src.rows);
-    NN_ASSERT(dst.cols == src.cols);
+    assert(dst.rows == src.rows && dst.cols == src.cols);
 
     for (size_t i = 0; i < dst.rows; i++)
-        for (size_t ii = 0; ii < dst.cols; ii++)
-            MAT_AT(dst, i, ii) = MAT_AT(src, i, ii);
+        for (size_t j = 0; j < dst.cols; j++)
+            MAT_AT(dst, i, j) = MAT_AT(src, i, j);
 }
 
-void Mat_sum(Mat dst, Mat m)
+void Mat_rand(Mat m, float low, float high)
 {
-    NN_ASSERT(dst.rows == m.rows);
-    NN_ASSERT(dst.cols == m.cols);
-
-    for (size_t i = 0; i < dst.rows; i++)
-        for (size_t ii = 0; ii < dst.cols; ii++)
-            MAT_AT(dst, i, ii) += MAT_AT(m, i, ii);
+    for (size_t i = 0; i < m.rows; i++)
+        for (size_t j = 0; j < m.cols; j++)
+            MAT_AT(m, i, j) = rand_float() * (high - low) + low;
 }
 
 void Mat_dot(Mat dst, Mat m1, Mat m2)
 {
-    NN_ASSERT(m1.cols == m2.rows);
-    NN_ASSERT(dst.rows == m1.rows);
-    NN_ASSERT(dst.cols == m2.cols);
+    assert(m1.cols == m2.rows && dst.rows == m1.rows && dst.cols == m2.cols);
 
     for (size_t i = 0; i < dst.rows; i++)
-        for (size_t ii = 0; ii < dst.cols; ii++)
-        {
-            MAT_AT(dst, i, ii) = 0;
-
-            for (size_t iii = 0; iii < m1.cols; iii++)
-                MAT_AT(dst, i, ii) += MAT_AT(m1, i, iii) * MAT_AT(m2, iii, ii);
-        }
+        for (size_t j = 0; j < dst.cols; j++)
+            for (size_t k = 0; k < m1.cols; k++)
+                MAT_AT(dst, i, j) += MAT_AT(m1, i, k) * MAT_AT(m2, k, j);
 }
 
-void Mat_sig(Mat m)
+void Mat_sum(Mat dst, Mat m)
+{
+    assert(dst.rows == m.rows && dst.cols == m.cols);
+
+    for (size_t i = 0; i < dst.rows; i++)
+        for (size_t j = 0; j < dst.cols; j++)
+            MAT_AT(dst, i, j) += MAT_AT(m, i, j);
+}
+
+void Mat_relu_inplace(Mat m)
 {
     for (size_t i = 0; i < m.rows; i++)
-        for (size_t ii = 0; ii < m.cols; ii++)
-            MAT_AT(m, i, ii) = sigmoidf(MAT_AT(m, i, ii));
+        for (size_t j = 0; j < m.cols; j++)
+            if (MAT_AT(m, i, j) < 0)
+                MAT_AT(m, i, j) = 0;
 }
 
-void Mat_free(Mat m)
+void Mat_save(FILE* out, Mat m)
 {
-    if (m.es != NULL)
-        free(m.es);
+    fwrite("MATDATA", sizeof(char), 7, out);
+
+    fwrite(&m.rows, sizeof(size_t), 1, out);
+    fwrite(&m.cols, sizeof(size_t), 1, out);
+
+    fwrite(m.es, sizeof(float), m.rows * m.cols, out);
 }
+
+Mat Mat_load(FILE* in)
+{
+    char header[7];
+    fread(header, sizeof(char), 7, in);
+    assert(memcmp(header, "MATDATA", 7) == 0);
+
+    size_t rows, cols;
+    fread(&rows, sizeof(size_t), 1, in);
+    fread(&cols, sizeof(size_t), 1, in);
+
+    Mat m = Mat_alloc(rows, cols);
+    fread(m.es, sizeof(float), rows * cols, in);
+
+    return m;
+}
+
+// -------------------------
+// Convolution Layer
+// -------------------------
+typedef struct
+{
+    size_t in_channels;
+    size_t out_channels;
+    size_t kernel_size;
+
+    Mat* kernels;
+    Mat* biases;
+} ConvLayer;
+
+ConvLayer Conv_alloc(size_t in_channels, size_t out_channels, size_t kernel_size)
+{
+    ConvLayer conv = { 0 };
+
+    conv.in_channels = in_channels;
+    conv.out_channels = out_channels;
+    conv.kernel_size = kernel_size;
+
+    conv.kernels = malloc(sizeof(Mat) * in_channels * out_channels);
+    conv.biases = malloc(sizeof(Mat) * out_channels);
+
+    for (size_t oc = 0; oc < out_channels; oc++)
+    {
+        conv.biases[oc] = Mat_alloc(1, 1);
+        MAT_AT(conv.biases[oc], 0, 0) = 0;
+
+        for (size_t ic = 0; ic < in_channels; ic++)
+            conv.kernels[oc * in_channels + ic] = Mat_alloc(kernel_size, kernel_size);
+    }
+
+    return conv;
+}
+
+void Conv_forward_single(Mat kernel, Mat input, Mat* output)
+{
+    size_t out_rows = input.rows - kernel.rows + 1;
+    size_t out_cols = input.cols - kernel.cols + 1;
+
+    *output = Mat_alloc(out_rows, out_cols);
+
+    for (size_t y = 0; y < out_rows; y++)
+        for (size_t x = 0; x < out_cols; x++)
+        {
+            float sum = 0.0f;
+
+            for (size_t ky = 0; ky < kernel.rows; ky++)
+                for (size_t kx = 0; kx < kernel.cols; kx++)
+                    sum += MAT_AT(input, y + ky, x + kx) * MAT_AT(kernel, ky, kx);
+
+            MAT_AT(*output, y, x) = sum;
+        }
+
+    Mat_relu_inplace(*output);
+}
+
+void Conv_forward(ConvLayer conv, Mat* input_channels, Mat* output_channels)
+{
+    for (size_t oc = 0; oc < conv.out_channels; oc++)
+    {
+        output_channels[oc] = Mat_alloc(
+            input_channels[0].rows - conv.kernel_size + 1,
+            input_channels[0].cols - conv.kernel_size + 1
+        );
+
+        Mat_fill(output_channels[oc], MAT_AT(conv.biases[oc], 0, 0));
+
+        for (size_t ic = 0; ic < conv.in_channels; ic++)
+        {
+            Mat temp;
+
+            Conv_forward_single(conv.kernels[oc * conv.in_channels + ic], input_channels[ic], &temp);
+            Mat_sum(output_channels[oc], temp);
+            Mat_free(temp);
+        }
+
+        Mat_relu_inplace(output_channels[oc]);
+    }
+}
+
+void Conv_save(FILE* out, ConvLayer conv)
+{
+    fwrite("CONVLAYR", sizeof(char), 8, out);
+
+    fwrite(&conv.in_channels, sizeof(size_t), 1, out);
+    fwrite(&conv.out_channels, sizeof(size_t), 1, out);
+    fwrite(&conv.kernel_size, sizeof(size_t), 1, out);
+
+    for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
+        Mat_save(out, conv.kernels[i]);
+
+    for (size_t i = 0; i < conv.out_channels; i++)
+        Mat_save(out, conv.biases[i]);
+}
+
+ConvLayer Conv_load(FILE* in)
+{
+    char header[8];
+    fread(header, sizeof(char), 8, in);
+    assert(memcmp(header, "CONVLAYR", 8) == 0);
+
+    ConvLayer conv = { 0 };
+
+    fread(&conv.in_channels, sizeof(size_t), 1, in);
+    fread(&conv.out_channels, sizeof(size_t), 1, in);
+    fread(&conv.kernel_size, sizeof(size_t), 1, in);
+
+    conv.kernels = malloc(sizeof(Mat) * conv.in_channels * conv.out_channels);
+    conv.biases = malloc(sizeof(Mat) * conv.out_channels);
+
+    for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
+        conv.kernels[i] = Mat_load(in);
+
+    for (size_t i = 0; i < conv.out_channels; i++)
+        conv.biases[i] = Mat_load(in);
+
+    return conv;
+}
+
+// -------------------------
+// MaxPool Layer
+// -------------------------
+Mat MaxPool2D(Mat input, size_t pool_size, size_t stride)
+{
+    size_t out_rows = (input.rows - pool_size) / stride + 1;
+    size_t out_cols = (input.cols - pool_size) / stride + 1;
+
+    Mat out = Mat_alloc(out_rows, out_cols);
+
+    for (size_t y = 0; y < out_rows; y++)
+        for (size_t x = 0; x < out_cols; x++)
+        {
+            float max_val = -FLT_MAX;
+
+            for (size_t py = 0; py < pool_size; py++)
+                for (size_t px = 0; px < pool_size; px++)
+                {
+                    float v = MAT_AT(input, y * stride + py, x * stride + px);
+
+                    if (v > max_val)
+                        max_val = v;
+                }
+
+            MAT_AT(out, y, x) = max_val;
+        }
+
+    return out;
+}
+
+// -------------------------
+// Flatten
+// -------------------------
+Mat Flatten(Mat* channels, size_t channel_count)
+{
+    size_t total = 0;
+
+    for (size_t c = 0; c < channel_count; c++)
+        total += channels[c].rows * channels[c].cols;
+
+    Mat out = Mat_alloc(1, total);
+
+    size_t idx = 0;
+
+    for (size_t c = 0; c < channel_count; c++)
+        for (size_t i = 0; i < channels[c].rows; i++)
+            for (size_t j = 0; j < channels[c].cols; j++)
+                MAT_AT(out, 0, idx++) = MAT_AT(channels[c], i, j);
+
+    return out;
+}
+
+// -------------------------
+// Fully Connected NN
+// -------------------------
+typedef struct
+{
+    size_t count;
+
+    Mat* ws;
+    Mat* bs;
+    Mat* as;
+
+    size_t conv_count;
+    ConvLayer* convs;
+} NN;
+
+
+#define NN_INPUT(nn) (nn).as[0]
+#define NN_OUTPUT(nn) (nn).as[(nn).count]
 
 NN NN_alloc(size_t* arch, size_t arch_count)
 {
-    NN_ASSERT(arch_count >= 2);
+    assert(arch_count >= 2);
 
     NN nn = { 0 };
 
     nn.count = arch_count - 1;
 
-    nn.ws = NN_MALLOC(sizeof(*nn.ws) * nn.count);
-    NN_ASSERT(nn.ws != NULL);
-
-    nn.bs = NN_MALLOC(sizeof(*nn.bs) * nn.count);
-    NN_ASSERT(nn.bs != NULL);
-
-    nn.as = NN_MALLOC(sizeof(*nn.as) * arch_count);
-    NN_ASSERT(nn.as != NULL);
+    nn.ws = malloc(sizeof(Mat) * nn.count);
+    nn.bs = malloc(sizeof(Mat) * nn.count);
+    nn.as = malloc(sizeof(Mat) * arch_count);
 
     nn.as[0] = Mat_alloc(1, arch[0]);
 
     for (size_t i = 0; i < nn.count; i++)
     {
-        NN_ASSERT(i + 1 < arch_count);
-
-        nn.ws[i]     = Mat_alloc(arch[i], arch[i + 1]);
-        nn.bs[i]     = Mat_alloc(1, arch[i + 1]);
+        nn.ws[i] = Mat_alloc(arch[i], arch[i + 1]);
+        nn.bs[i] = Mat_alloc(1, arch[i + 1]);
         nn.as[i + 1] = Mat_alloc(1, arch[i + 1]);
     }
 
     return nn;
-}
-
-void NN_zero(NN nn)
-{
-    for (size_t i = 0; i < nn.count; i++)
-    {
-        Mat_fill(nn.ws[i], 0);
-        Mat_fill(nn.bs[i], 0);
-        Mat_fill(nn.as[i], 0);
-    }
-
-    Mat_fill(nn.as[nn.count], 0);
 }
 
 void NN_rand(NN nn, float low, float high)
@@ -302,284 +366,77 @@ void NN_rand(NN nn, float low, float high)
     }
 }
 
-void NN_print(NN nn, const char *name)
-{
-    char buf[256];
-
-    printf("\n%s = [", name);
-    
-    for (size_t i = 0; i < nn.count; i++)
-    {
-        snprintf(buf, sizeof(buf), "ws%zu", i);
-        Mat_print(nn.ws[i], buf, 4);
-        
-        snprintf(buf, sizeof(buf), "bs%zu", i);
-        Mat_print(nn.bs[i], buf, 4);
-    }
-
-    printf("]\n");
-}
-
 void NN_forward(NN nn)
 {
+    Mat x = NN_INPUT(nn);
+
     for (size_t i = 0; i < nn.count; i++)
     {
-        Mat_dot(nn.as[i + 1], nn.as[i], nn.ws[i]);
+        Mat_fill(nn.as[i + 1], 0);
+        Mat_dot(nn.as[i + 1], x, nn.ws[i]);
         Mat_sum(nn.as[i + 1], nn.bs[i]);
-        Mat_sig(nn.as[i + 1]);
+        Mat_relu_inplace(nn.as[i + 1]);
+
+        x = nn.as[i + 1];
     }
 }
 
-float NN_cost(NN nn, Mat ti, Mat to)
+void NN_save(FILE* out, NN nn)
 {
-    assert(ti.rows == to.rows);
-    assert(to.cols == NN_OUTPUT(nn).cols);
-    
-    float c = 0.0F;
+    fwrite("NNMODEL", sizeof(char), 7, out);
 
-    for (size_t i = 0; i < ti.rows; i++)
-    {
-        Mat x = Mat_row(ti, i);
-        Mat y = Mat_row(to, i);
-        
-        Mat_copy(NN_INPUT(nn), x);
-        NN_forward(nn);
-
-        for (size_t ii = 0; ii < to.cols; ii++)
-        {
-            float d = MAT_AT(NN_OUTPUT(nn), 0, ii) - MAT_AT(y, 0, ii);
-
-            c += d * d;
-        }
-    }
-
-    return c / ti.rows;
-}
-
-void NN_finite_diff(NN nn, NN gnn, Mat ti, Mat to, float eps)
-{
-    float saved;
-
-    float c = NN_cost(nn, ti, to);
-
-    for (size_t i = 0; i < nn.count; i++)
-    {
-        for (size_t ii = 0; ii < nn.ws[i].rows; ii++)
-            for (size_t iii = 0; iii < nn.ws[i].cols; iii++)
-            {
-                saved = MAT_AT(nn.ws[i], ii, iii);
-
-                MAT_AT(nn.ws[i], ii, iii) += eps;
-                MAT_AT(gnn.ws[i], ii, iii) = (NN_cost(nn, ti, to) - c) / eps;
-                MAT_AT(nn.ws[i], ii, iii) = saved;
-            }
-
-        for (size_t ii = 0; ii < nn.bs[i].rows; ii++)
-            for (size_t iii = 0; iii < nn.bs[i].cols; iii++)
-            {
-                saved = MAT_AT(nn.bs[i], ii, iii);
-    
-                MAT_AT(nn.bs[i], ii, iii) += eps;
-                MAT_AT(gnn.bs[i], ii, iii) = (NN_cost(nn, ti, to) - c) / eps;
-                MAT_AT(nn.bs[i], ii, iii) = saved;
-            }
-    }
-}
-
-void NN_backprop(NN nn, NN gnn, Mat ti, Mat to)
-{
-    NN_ASSERT(ti.rows == to.rows);
-    NN_ASSERT(NN_OUTPUT(nn).cols == to.cols);
-
-    NN_zero(gnn);
-
-    /* 
-     * i   - current sample
-     * iv  - current layer
-     * ii  - current activation
-     * iii - previous activation
-     */
-
-    for (size_t i = 0; i < ti.rows; i++)
-    {
-        Mat_copy(NN_INPUT(nn), Mat_row(ti, i));
-
-        NN_forward(nn);
-
-        for (size_t ii = 0; ii <= nn.count; ii++)
-            Mat_fill(gnn.as[ii], 0);
-
-        for (size_t ii = 0; ii < to.cols; ii++)
-            MAT_AT(NN_OUTPUT(gnn), 0, ii) = MAT_AT(NN_OUTPUT(nn), 0, ii) - MAT_AT(to, i, ii);
-
-        for (size_t iv = nn.count; iv > 0; iv--)
-            for (size_t ii = 0; ii < nn.as[iv].cols; ii++)
-            {
-                float a  = MAT_AT(nn.as[iv], 0, ii);
-                float da = MAT_AT(gnn.as[iv], 0, ii);
-
-                float dz = 2 * da * a * (1 - a);
-
-                MAT_AT(gnn.bs[iv - 1], 0, ii) += dz;
-
-                for (size_t iii = 0; iii < nn.as[iv - 1].cols; iii++)
-                {
-                    /*
-                     * ii  - weight matrix col
-                     * iii - weight matrix row
-                     */
-
-                    float pa = MAT_AT(nn.as[iv - 1], 0, iii);
-                    float w  = MAT_AT(nn.ws[iv - 1], iii, ii);
-
-                    MAT_AT(gnn.ws[iv - 1], iii, ii) += dz * pa;
-                    MAT_AT(gnn.as[iv - 1], 0, iii)  += dz * w;
-                }
-            }
-    }
-
-    for (size_t i = 0; i < gnn.count; i++)
-    {
-        for (size_t ii = 0; ii < gnn.ws[i].rows; ii++)
-            for (size_t iii = 0; iii < gnn.ws[i].cols; iii++)
-                MAT_AT(gnn.ws[i], ii, iii) /= ti.rows;
-
-        for (size_t ii = 0; ii < gnn.bs[i].rows; ii++)
-            for (size_t iii = 0; iii < gnn.bs[i].cols; iii++)
-                MAT_AT(gnn.bs[i], ii, iii) /= ti.rows;
-    }
-}
-
-void NN_learn(NN nn, NN gnn, float rate)
-{
-    for (size_t i = 0; i < nn.count; i++)
-    {
-        for (size_t ii = 0; ii < nn.ws[i].rows; ii++)
-            for (size_t iii = 0; iii < nn.ws[i].cols; iii++)
-                MAT_AT(nn.ws[i], ii, iii) -= MAT_AT(gnn.ws[i], ii, iii) * rate;
-
-        for (size_t ii = 0; ii < nn.bs[i].rows; ii++)
-            for (size_t iii = 0; iii < nn.bs[i].cols; iii++)
-                MAT_AT(nn.bs[i], ii, iii) -= MAT_AT(gnn.bs[i], ii, iii) * rate;
-    }
-}
-
-float NN_accuracy(NN nn, Mat ti, Mat to)
-{
-    size_t correct = 0;
-
-    for (size_t i = 0; i < ti.rows; i++)
-    {
-        Mat x = Mat_row(ti, i);
-        Mat y = Mat_row(to, i);
-
-        Mat_copy(NN_INPUT(nn), x);
-        NN_forward(nn);
-
-        size_t pred = 0;
-        float max_pred = MAT_AT(NN_OUTPUT(nn), 0, 0);
-
-        for (size_t j = 1; j < NN_OUTPUT(nn).cols; j++)
-        {
-            float v = MAT_AT(NN_OUTPUT(nn), 0, j);
-
-            if (v > max_pred)
-            {
-                max_pred = v;
-                pred = j;
-            }
-        }
-
-        size_t label = 0;
-
-        for (size_t j = 0; j < y.cols; j++)
-        {
-            if (MAT_AT(y, 0, j) == 1.0f)
-            {
-                label = j;
-
-                break;
-            }
-        }
-
-        if (pred == label)
-            correct++;
-    }
-
-    return (float)correct / (float)ti.rows;
-}
-
-void NN_save(FILE *out, NN nn)
-{
-    fwrite(&nn.count, sizeof(nn.count), 1, out);
+    fwrite(&nn.count, sizeof(size_t), 1, out);
+    fwrite(&nn.conv_count, sizeof(size_t), 1, out);
 
     for (size_t i = 0; i < nn.count; i++)
     {
         Mat_save(out, nn.ws[i]);
         Mat_save(out, nn.bs[i]);
     }
+
+    for (size_t i = 0; i < nn.conv_count; i++)
+        Conv_save(out, nn.convs[i]);
 }
 
-NN NN_load(FILE *in)
+NN NN_load(FILE* in)
 {
-    size_t count;
-    fread(&count, sizeof(count), 1, in);
+    char header[7];
+    fread(header, sizeof(char), 7, in);
+    assert(memcmp(header, "NNMODEL", 7) == 0);
 
-    NN_ASSERT(count >= 1);
+    NN nn = { 0 };
 
-    size_t input_size;
-    fread(&input_size, sizeof(input_size), 1, in);
+    fread(&nn.count, sizeof(size_t), 1, in);
+    fread(&nn.conv_count, sizeof(size_t), 1, in);
 
+    size_t* arch = malloc(sizeof(size_t) * (nn.count + 1));
 
-    size_t *arch = (size_t*) malloc(sizeof(size_t) * (count + 1));
-    NN_ASSERT(arch != NULL);
+    nn.ws = malloc(sizeof(Mat) * nn.count);
+    nn.bs = malloc(sizeof(Mat) * nn.count);
+    nn.as = malloc(sizeof(Mat) * (nn.count + 1));
 
-    arch[0] = input_size;
-
-    Mat* ws = (Mat*) malloc(sizeof(Mat) * count);
-    NN_ASSERT(ws != NULL);
-
-    Mat* bs = (Mat*) malloc(sizeof(Mat) * count);
-    NN_ASSERT(bs != NULL);
-
-    for (size_t i = 0; i < count; i++)
+    for (size_t i = 0; i < nn.count; i++)
     {
-        ws[i] = Mat_load(in);
-        bs[i] = Mat_load(in);
-        arch[i + 1] = ws[i].cols; // assuming ws[i] shape is [prev_layer_size, this_layer_size]
+        nn.ws[i] = Mat_load(in);
+        nn.bs[i] = Mat_load(in);
+        arch[i + 1] = nn.ws[i].cols;
     }
 
-    NN nn = NN_alloc(arch, count + 1);
+    arch[0] = nn.ws[0].rows;
+    nn.as[0] = Mat_alloc(1, arch[0]);
 
-    for (size_t i = 0; i < count; i++)
+    for (size_t i = 0; i < nn.count; i++)
+        nn.as[i + 1] = Mat_alloc(1, arch[i + 1]);
+
+    if (nn.conv_count > 0)
     {
-        Mat_copy(nn.ws[i], ws[i]);
-        Mat_copy(nn.bs[i], bs[i]);
+        nn.convs = malloc(sizeof(ConvLayer) * nn.conv_count);
 
-        Mat_free(ws[i]);
-        Mat_free(bs[i]);
+        for (size_t i = 0; i < nn.conv_count; i++)
+            nn.convs[i] = Conv_load(in);
     }
 
-    free(ws);
-    free(bs);
     free(arch);
 
     return nn;
-}
-
-void NN_free(NN nn)
-{
-    if (nn.count > 0)
-        for (size_t i = 0; i < nn.count; i++)
-        {
-            Mat_free(nn.ws[i]);
-            Mat_free(nn.bs[i]);
-            Mat_free(nn.as[i + 1]);
-        }
-
-    Mat_free(nn.as[0]);
-
-    if (nn.ws != NULL) free(nn.ws);
-    if (nn.bs != NULL) free(nn.bs);
-    if (nn.as != NULL) free(nn.as);
 }

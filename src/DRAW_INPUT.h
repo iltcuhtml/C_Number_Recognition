@@ -12,34 +12,34 @@
 #define TYPE_WARNING    2
 #define TYPE_INFO       3
 
-uint16_t SCREEN_WIDTH, SCREEN_HEIGHT,
+int32_t SCREEN_WIDTH, SCREEN_HEIGHT,
          SCREEN_STANDARD,
          CANVAS_SIZE, CANVAS_X, CANVAS_Y,
          CELL_LEN, CELL_SIZE;
 
 void SetScreenConstants(int screen_width, int screen_height)
 {
-    SCREEN_WIDTH  = (uint16_t)screen_width;
-    SCREEN_HEIGHT = (uint16_t)screen_height;
+    SCREEN_WIDTH  = (int32_t)screen_width;
+    SCREEN_HEIGHT = (int32_t)screen_height;
 
 
     if (SCREEN_WIDTH > SCREEN_HEIGHT)
     {
-        CANVAS_SIZE = (SCREEN_WIDTH / 4 < SCREEN_HEIGHT) ? SCREEN_WIDTH / 4 : SCREEN_HEIGHT;
+        CANVAS_SIZE = (SCREEN_WIDTH / 3 < SCREEN_HEIGHT / 1.3125f) ? (int)(SCREEN_WIDTH / 3) : (int)(SCREEN_HEIGHT / 1.3125f);
 
-        CANVAS_X = (SCREEN_WIDTH - CANVAS_SIZE * 3) / 4;
-        CANVAS_Y = (SCREEN_HEIGHT - CANVAS_SIZE) / 2;
+        CANVAS_X = (int)(SCREEN_WIDTH - CANVAS_SIZE * 2) / 3;
+        CANVAS_Y = (int)(SCREEN_HEIGHT - CANVAS_SIZE * 1.3125f) / 2;
     }
     else
     {
-        CANVAS_SIZE = (SCREEN_HEIGHT / 4 < SCREEN_WIDTH) ? SCREEN_HEIGHT / 4 : SCREEN_WIDTH;
+        CANVAS_SIZE = (SCREEN_HEIGHT / 3.3125f < SCREEN_WIDTH) ? (int)(SCREEN_HEIGHT / 3.125f) : SCREEN_WIDTH;
 
-        CANVAS_X = (SCREEN_WIDTH - CANVAS_SIZE) / 2;
-        CANVAS_Y = (SCREEN_HEIGHT - CANVAS_SIZE * 3) / 4;
+        CANVAS_X = (int)(SCREEN_WIDTH - CANVAS_SIZE) / 2;
+        CANVAS_Y = (int)(SCREEN_HEIGHT - CANVAS_SIZE * 2) / 3;
     }
 
     CELL_LEN = 28;
-    CELL_SIZE = CANVAS_SIZE / CELL_LEN;
+    CELL_SIZE = (int)(CANVAS_SIZE / CELL_LEN);
 }
 
 static void ShowMessage(const char* message, int type)
@@ -54,7 +54,7 @@ static void ShowMessage(const char* message, int type)
         MessageBox(NULL, message, "Info", MB_ICONINFORMATION | MB_OK);
 }
 
-inline void ClearCanvas(uint8_t* data)
+inline void ClearData(uint8_t* data)
 {
     for (uint16_t i = 0; i < CELL_LEN * CELL_LEN; i++)
         data[i] = 0;
@@ -73,28 +73,11 @@ void DrawInCanvas(HDC hdc, uint8_t* data)
     {
         free(dib);
 
-        dib = (uint32_t*) malloc(sizeof(uint32_t) * total_pixels);
+        dib = (uint32_t*)malloc(sizeof(uint32_t) * total_pixels);
         dib_pixels = total_pixels;
     }
 
     if (dib == NULL) return;
-
-    for (int py = 0; py < CANVAS_SIZE; py++)
-    {
-        int cell_y = py / CELL_SIZE;
-        if (cell_y >= CELL_LEN) cell_y = CELL_LEN - 1;
-
-        for (int px = 0; px < CANVAS_SIZE; px++)
-        {
-            int cell_x = px / CELL_SIZE;
-            if (cell_x >= CELL_LEN) cell_x = CELL_LEN - 1;
-
-            uint8_t v = data[cell_y * CELL_LEN + cell_x];
-            uint32_t col = 0xFF000000 | (v << 16) | (v << 8) | v;
-
-            dib[py * CANVAS_SIZE + px] = col;
-        }
-    }
 
     BITMAPINFO bmi;
     ZeroMemory(&bmi, sizeof(bmi));
@@ -105,17 +88,35 @@ void DrawInCanvas(HDC hdc, uint8_t* data)
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    if (dib != NULL)
+    if (data != NULL)
     {
+        for (int py = 0; py < CANVAS_SIZE; py++)
+        {
+            int cell_y = py / CELL_SIZE;
+            if (cell_y >= CELL_LEN) cell_y = CELL_LEN - 1;
+
+            for (int px = 0; px < CANVAS_SIZE; px++)
+            {
+                int cell_x = px / CELL_SIZE;
+                if (cell_x >= CELL_LEN) cell_x = CELL_LEN - 1;
+
+                uint8_t v = data[cell_y * CELL_LEN + cell_x];
+                uint32_t col = 0xFF000000 | (v << 16) | (v << 8) | v;
+
+                dib[py * CANVAS_SIZE + px] = col;
+            }
+        }
+
         SetDIBitsToDevice(
             hdc,
-            0, 0, 
-            CANVAS_SIZE, CANVAS_SIZE, 
-            0, 0, 
-            0, CANVAS_SIZE, 
+            0, 0,
+            CANVAS_SIZE, CANVAS_SIZE,
+            0, 0,
+            0, CANVAS_SIZE,
             dib,
             &bmi,
-            DIB_RGB_COLORS);
+            DIB_RGB_COLORS
+        );
     }
 }
 

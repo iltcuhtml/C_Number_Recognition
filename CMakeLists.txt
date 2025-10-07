@@ -24,9 +24,9 @@ endif()
 # 실행 파일 1: train
 add_executable(train
     src/train.c
-)
+ "src/NN.h")
 
 # 실행 파일 2: predict
 add_executable(predict
     src/main.c
-)
+ "src/NN.h")

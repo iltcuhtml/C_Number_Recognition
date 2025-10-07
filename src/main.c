@@ -13,9 +13,11 @@
 #define DEBUG
 
 #define ID_BUTTON_CLEAR     1001
-#define ID_BUTTON_SAVE      1002
+#define ID_BUTTON_QUIT      1002
 #define ID_BUTTON_PREDICT   1003
-#define ID_BUTTON_QUIT      1004
+#define ID_BUTTON_SAVE      1004
+#define ID_BUTTON_LOAD      1005
+#define ID_LOAD_INDEX       1006
 
 NN nn;
 uint8_t nn_initialized = 0;
@@ -24,15 +26,19 @@ uint8_t quit = 0;
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static HDC hMemDC = NULL;
-    static HBITMAP hBitmap = NULL;
+    static HBITMAP hBitmap   = NULL;
     static HGDIOBJ oldBitmap = NULL;
 
-    static HWND hwndButtonClear = NULL;
-    static HWND hwndButtonSave = NULL;
+    static HWND hwndButtonClear   = NULL;
+    static HWND hwndButtonQuit    = NULL;
     static HWND hwndButtonPredict = NULL;
-    static HWND hwndButtonQuit = NULL;
+    static HWND hwndButtonSave    = NULL;
+    static HWND hwndButtonLoad    = NULL;
+    static HWND hwndLoadIndex     = NULL;
 
-    static uint8_t* data = NULL;
+    static uint8_t* data        = NULL;
+    static uint8_t* loaded_data = NULL;
+
     static uint8_t drawing = 0;
 
     switch (msg)
@@ -44,8 +50,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             hBitmap = CreateCompatibleBitmap(hdc, CANVAS_SIZE, CANVAS_SIZE);
             oldBitmap = SelectObject(hMemDC, hBitmap);
 
-            data = (uint8_t*) malloc(sizeof(uint8_t) * CELL_LEN * CELL_LEN);
-            ClearCanvas(data);
+            data = (uint8_t*)malloc(sizeof(uint8_t) * CELL_LEN * CELL_LEN);
+
+            ClearData(data);
 
             DrawInCanvas(hMemDC, data);
             ReleaseDC(hwnd, hdc);
@@ -63,14 +70,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
             );
 
-            hwndButtonSave = CreateWindow(
-                "BUTTON", "Save", btnStyle,
-                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
-                btnWidth, btnHeight,
-                hwnd, (HMENU)ID_BUTTON_SAVE, NULL, NULL
+            hwndButtonQuit = CreateWindow(
+                "BUTTON", "Quit", btnStyle, 
+                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
+                btnWidth, btnHeight, 
+                hwnd, (HMENU)ID_BUTTON_QUIT, NULL, NULL
             );
-
-            if (nn_initialized) ShowWindow(hwndButtonSave, SW_HIDE);
 
             hwndButtonPredict = CreateWindow(
                 "BUTTON", "Predict", btnStyle,
@@ -79,14 +84,36 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hwnd, (HMENU)ID_BUTTON_PREDICT, NULL, NULL
             );
 
-            if (!nn_initialized) ShowWindow(hwndButtonPredict, SW_HIDE);
-
-            hwndButtonQuit = CreateWindow(
-                "BUTTON", "Quit", btnStyle, 
-                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
-                btnWidth, btnHeight, 
-                hwnd, (HMENU)ID_BUTTON_QUIT, NULL, NULL
+            hwndButtonSave = CreateWindow(
+                "BUTTON", "Save", btnStyle,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                btnWidth, btnHeight,
+                hwnd, (HMENU)ID_BUTTON_SAVE, NULL, NULL
             );
+
+            hwndButtonLoad = CreateWindow(
+                "BUTTON", "Load", btnStyle,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), (int)(btnY + btnHeight * 1.25),
+                btnWidth, btnHeight,
+                hwnd, (HMENU)ID_BUTTON_LOAD, NULL, NULL
+            );
+
+            hwndLoadIndex = CreateWindow(
+                "EDIT", "0", 
+                WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), (int)(btnY + btnHeight * 1.25),
+                btnWidth, btnHeight,
+                hwnd, (HMENU)ID_LOAD_INDEX, NULL, NULL
+            );
+
+            if (nn_initialized)
+            {
+                ShowWindow(hwndButtonSave, SW_HIDE);
+                ShowWindow(hwndButtonLoad, SW_HIDE);
+                ShowWindow(hwndLoadIndex, SW_HIDE);
+            }
+            else
+                ShowWindow(hwndButtonPredict, SW_HIDE);
 
             return 0;
         }
@@ -118,7 +145,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
             DrawInCanvas(hMemDC, data);
 
-            if (hwndButtonClear && hwndButtonPredict && hwndButtonQuit)
+            if (hwndButtonClear && hwndButtonQuit && hwndButtonPredict && 
+                hwndButtonSave && hwndButtonLoad && hwndLoadIndex)
             {
                 int btnWidth = (int)(CANVAS_SIZE / 4);
                 int btnHeight = (int)(CANVAS_SIZE / 8);
@@ -132,8 +160,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 );
 
                 MoveWindow(
-                    hwndButtonSave,
-                    (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                    hwndButtonQuit,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
                     btnWidth, btnHeight,
                     TRUE
                 );
@@ -146,8 +174,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 );
 
                 MoveWindow(
-                    hwndButtonQuit,
-                    (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
+                    hwndButtonSave,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+
+                MoveWindow(
+                    hwndButtonLoad,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.375f), (int)(btnY + btnHeight * 1.25),
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+
+                MoveWindow(
+                    hwndLoadIndex,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), (int)(btnY + btnHeight * 1.25),
                     btnWidth, btnHeight,
                     TRUE
                 );
@@ -198,12 +240,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 {
                     if (hMemDC && data)
                     {
-                        ClearCanvas(data);
+                        ClearData(data);
                         DrawInCanvas(hMemDC, data);
 
                         InvalidateRect(hwnd, NULL, TRUE);
                     }
 
+                    break;
+                }
+
+                case ID_BUTTON_QUIT:
+                {
+                    quit = 1;
+
+                    PostQuitMessage(0);
+                    
                     break;
                 }
 
@@ -226,12 +277,121 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 }
 
-                case ID_BUTTON_QUIT:
+                case ID_BUTTON_SAVE:
                 {
-                    quit = 1;
+                    if (data != NULL)
+                    {
+                        FILE* file = NULL;
+                        size_t count = 0;
 
-                    PostQuitMessage(0);
-                    
+                        fopen_s(&file, "data/number.dat", "r+b");
+
+                        if (!file)
+                        {
+                            fopen_s(&file, "data/number.dat", "w+b");
+
+                            if (!file)
+                            {
+                                ShowMessage("Failed to create 'data/number.dat'", TYPE_ERROR);
+
+                                break;
+                            }
+
+                            fwrite("NUMDATA", sizeof(char), 8, file);  // header_length = 8
+
+                            fwrite(&count, sizeof(size_t), 1, file);
+                        }
+                        else
+                        {
+                            char header_buf[8]; // header_length = 8
+                            fread(header_buf, sizeof(char), 8, file);   // header_length = 8
+
+                            if (memcmp(header_buf, "NUMDATA", 8) != 0) // header_length = 8
+                            {
+                                fclose(file);
+
+
+                                ShowMessage("File header mismatch in 'data/number.dat'", TYPE_ERROR);
+
+                                break;
+                            }
+
+                            fread(&count, sizeof(size_t), 1, file);
+                        }
+
+                        fseek(file, 0, SEEK_END);
+                        fwrite(data, sizeof(uint8_t), CELL_LEN * CELL_LEN, file);
+
+                        count++;
+                        fseek(file, 8, SEEK_SET);   // header_length = 8
+                        fwrite(&count, sizeof(size_t), 1, file);
+
+                        fclose(file);
+
+                        ClearData(data);
+                        DrawInCanvas(hMemDC, data);
+
+                        InvalidateRect(hwnd, NULL, TRUE);
+                    }
+
+                    break;
+                }
+
+                case ID_BUTTON_LOAD:
+                {
+                    if (data != NULL)
+                    {
+                        char buf[32] = { 0 };
+                        int idx = 0;
+
+                        GetWindowText(hwndLoadIndex, buf, sizeof(buf));
+                        idx = atoi(buf);
+
+                        FILE* file = NULL;
+                        fopen_s(&file, "data/number.dat", "rb");
+                        
+                        if (!file)
+                        {
+                            ShowMessage("Failed to open 'data/number.dat'", TYPE_ERROR);
+                            
+                            break;
+                        }
+
+                        char header[8];
+                        fread(header, sizeof(char), 8, file);
+
+                        if (memcmp(header, "NUMDATA", 8) != 0)
+                        {
+                            fclose(file);
+
+                            ShowMessage("File header mismatch", TYPE_ERROR);
+                            
+                            break;
+                        }
+
+                        size_t count = 0;
+                        fread(&count, sizeof(size_t), 1, file);
+
+                        if (idx < 0 || (size_t)idx >= count)
+                        {
+                            fclose(file);
+
+                            ShowMessage("Invalid dataset index", TYPE_ERROR);
+
+                            break;
+                        }
+
+                        fseek(file, 8 + sizeof(size_t) + idx * CELL_LEN * CELL_LEN, SEEK_SET);
+                        fread(data, sizeof(uint8_t), CELL_LEN * CELL_LEN, file);
+
+                        fclose(file);
+
+                        if (hMemDC)
+                            DrawInCanvas(hMemDC, data);
+
+                        InvalidateRect(hwnd, NULL, TRUE);
+                    }
+
                     break;
                 }
             }
@@ -244,8 +404,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
 
-            if (hMemDC != NULL && CANVAS_SIZE > 0)
-                BitBlt(hdc, CANVAS_X, CANVAS_Y, CANVAS_SIZE, CANVAS_SIZE, hMemDC, 0, 0, SRCCOPY);
+            if (hMemDC != NULL && data != NULL && CANVAS_SIZE > 0)
+                BitBlt(
+                    hdc,
+                    CANVAS_X, CANVAS_Y,
+                    CANVAS_SIZE, CANVAS_SIZE,
+                    hMemDC, 0, 0, SRCCOPY
+                );
 
             EndPaint(hwnd, &ps);
 
@@ -270,6 +435,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 free(data);
 
                 data = NULL;
+            }
+
+            if (loaded_data != NULL)
+            {
+                free(loaded_data);
+
+                loaded_data = NULL;
             }
 
             PostQuitMessage(0);
