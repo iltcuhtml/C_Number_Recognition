@@ -476,7 +476,7 @@ int WINAPI WinMain(
             ShowMessage("Failed to load neural network model", TYPE_ERROR);
             ShowMessage("Prediction will be disabled.", TYPE_INFO);
 
-            NN_free(nn);
+            NN_free(&nn);
             ZeroMemory(&nn, sizeof(nn));
         }
         else
@@ -510,7 +510,7 @@ int WINAPI WinMain(
     {
         if (nn_initialized)
         {
-            NN_free(nn);
+            NN_free(&nn);
             ZeroMemory(&nn, sizeof(nn));
         }
 
@@ -533,7 +533,7 @@ int WINAPI WinMain(
 
         if (nn_initialized)
         {
-            NN_free(nn);
+            NN_free(&nn);
             ZeroMemory(&nn, sizeof(nn));
         }
 
@@ -558,7 +558,7 @@ int WINAPI WinMain(
 
     if (nn_initialized)
     {
-        NN_free(nn);
+        NN_free(&nn);
         ZeroMemory(&nn, sizeof(nn));
     }
 
