@@ -60,9 +60,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
             DWORD btnStyle = WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON;
 
-            int btnWidth = (int)(CANVAS_SIZE / 4);
-            int btnHeight = (int)(CANVAS_SIZE / 8);
-            int btnY = (int)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
+            int32_t btnWidth = (int32_t)(CANVAS_SIZE / 4);
+            int32_t btnHeight = (int32_t)(CANVAS_SIZE / 8);
+
+            int32_t btnY = (int32_t)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
 
             hwndButtonClear = CreateWindow(
                 "BUTTON", "Clear", btnStyle, 
@@ -124,7 +125,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             RECT rect;
             GetClientRect(hwnd, &rect);
 
-            SetScreenConstants(rect.right - rect.left, rect.bottom - rect.top);
+            SetScreenConstants(rect.right - rect.left, rect.bottom - rect.top, nn_initialized);
 
             if (hMemDC && hBitmap)
             {
@@ -526,7 +527,7 @@ int WINAPI WinMain(
         return EXIT_FAILURE;
     }
 
-    SetScreenConstants(1600, 900);
+    SetScreenConstants(1600, 900, nn_initialized);
 
 
     HWND hWnd = CreateWindow(

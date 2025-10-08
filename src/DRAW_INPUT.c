@@ -1,28 +1,33 @@
 #include "DRAW_INPUT.h"
 
-void SetScreenConstants(int screen_width, int screen_height)
+void SetScreenConstants(int32_t screen_width, int32_t screen_height, uint8_t nn_initialized)
 {
     SCREEN_WIDTH = (int32_t)screen_width;
     SCREEN_HEIGHT = (int32_t)screen_height;
 
-
     if (SCREEN_WIDTH > SCREEN_HEIGHT)
     {
-        CANVAS_SIZE = (SCREEN_WIDTH / 3.0f < SCREEN_HEIGHT / 1.3125f) ? (int)(SCREEN_WIDTH / 3) : (int)(SCREEN_HEIGHT / 1.3125f);
+        CANVAS_SIZE = 
+            (SCREEN_WIDTH / 3.0f < SCREEN_HEIGHT / (1 + 0.3125f / (nn_initialized + 1))) ? 
+            (int32_t)(SCREEN_WIDTH / 3) : 
+            (int32_t)(SCREEN_HEIGHT / (1 + 0.3125f / (nn_initialized + 1)));
 
-        CANVAS_X = (int)(SCREEN_WIDTH - CANVAS_SIZE * 2) / 3;
-        CANVAS_Y = (int)(SCREEN_HEIGHT - CANVAS_SIZE * 1.3125f) / 2;
+        CANVAS_X = (int32_t)((SCREEN_WIDTH - CANVAS_SIZE * 2) / 3);
+        CANVAS_Y = (int32_t)((SCREEN_HEIGHT - CANVAS_SIZE * (1 + 0.3125f / (nn_initialized + 1))) / 2);
     }
     else
     {
-        CANVAS_SIZE = (SCREEN_HEIGHT / 3.3125f < SCREEN_WIDTH) ? (int)(SCREEN_HEIGHT / 3.125f) : SCREEN_WIDTH;
+        CANVAS_SIZE = 
+            (SCREEN_HEIGHT / (3 + 0.3125f / (nn_initialized + 1)) < SCREEN_WIDTH) ? 
+            (int32_t)(SCREEN_HEIGHT / (3 + 0.3125f / (nn_initialized + 1))) : 
+            SCREEN_WIDTH;
 
-        CANVAS_X = (int)(SCREEN_WIDTH - CANVAS_SIZE) / 2;
-        CANVAS_Y = (int)(SCREEN_HEIGHT - CANVAS_SIZE * 2) / 3;
+        CANVAS_X = (int32_t)((SCREEN_WIDTH - CANVAS_SIZE) / 2);
+        CANVAS_Y = (int32_t)((SCREEN_HEIGHT - CANVAS_SIZE * (2 + 0.3125f / (nn_initialized + 1))) / 3);
     }
 
     CELL_LEN = 28;
-    CELL_SIZE = (int)(CANVAS_SIZE / CELL_LEN);
+    CELL_SIZE = (int32_t)(CANVAS_SIZE / CELL_LEN);
 }
 
 void ShowMessage(const char* message, int type)
