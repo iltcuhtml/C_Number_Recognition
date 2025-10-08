@@ -88,9 +88,22 @@ void Mat_rand(Mat m, float low, float high)
             MAT_AT(m, i, j) = rand_float() * (high - low) + low;
 }
 
+Mat Mat_row(Mat m, size_t row)
+{
+    return (Mat)
+    {
+        .rows = 1,
+        .cols = m.cols,
+        .stride = m.stride,
+        .es = &MAT_AT(m, row, 0)
+    };
+}
+
 void Mat_dot(Mat dst, Mat m1, Mat m2)
 {
     assert(m1.cols == m2.rows && dst.rows == m1.rows && dst.cols == m2.cols);
+
+    Mat_fill(dst, 0);
 
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t j = 0; j < dst.cols; j++)
@@ -115,6 +128,43 @@ void Mat_relu_inplace(Mat m)
                 MAT_AT(m, i, j) = 0;
 }
 
+void Mat_drelu_inplace(Mat m)
+{
+    for (size_t i = 0; i < m.rows; i++)
+        for (size_t j = 0; j < m.cols; j++)
+            MAT_AT(m, i, j) = drelu(MAT_AT(m, i, j));
+}
+
+void Mat_dsigmoid_inplace(Mat m)
+{
+    for (size_t i = 0; i < m.rows; i++)
+        for (size_t j = 0; j < m.cols; j++)
+            MAT_AT(m, i, j) = dsigmoid(MAT_AT(m, i, j));
+}
+
+void Mat_softmax_inplace(Mat m)
+{
+    for (size_t i = 0; i < m.rows; i++)
+    {
+        float max_val = -FLT_MAX;
+
+        for (size_t j = 0; j < m.cols; j++)
+            if (MAT_AT(m, i, j) > max_val)
+                max_val = MAT_AT(m, i, j);
+
+        float sum = 0.0f;
+
+        for (size_t j = 0; j < m.cols; j++)
+        {
+            MAT_AT(m, i, j) = expf(MAT_AT(m, i, j) - max_val);
+            sum += MAT_AT(m, i, j);
+        }
+
+        for (size_t j = 0; j < m.cols; j++)
+            MAT_AT(m, i, j) /= sum;
+    }
+}
+
 void Mat_save(FILE* out, Mat m)
 {
     fwrite("MATDATA", sizeof(char), 7, out);
@@ -128,6 +178,7 @@ void Mat_save(FILE* out, Mat m)
 Mat Mat_load(FILE* in)
 {
     char header[7];
+
     fread(header, sizeof(char), 7, in);
     assert(memcmp(header, "MATDATA", 7) == 0);
 
@@ -195,8 +246,6 @@ void Conv_forward_single(Mat kernel, Mat input, Mat* output)
 
             MAT_AT(*output, y, x) = sum;
         }
-
-    Mat_relu_inplace(*output);
 }
 
 void Conv_forward(ConvLayer conv, Mat* input_channels, Mat* output_channels)
@@ -223,17 +272,24 @@ void Conv_forward(ConvLayer conv, Mat* input_channels, Mat* output_channels)
     }
 }
 
+// -------------------------
+// ConvLayer Save / Load
+// -------------------------
 void Conv_save(FILE* out, ConvLayer conv)
 {
+    // Write header
     fwrite("CONVLAYR", sizeof(char), 8, out);
 
+    // Write basic parameters
     fwrite(&conv.in_channels, sizeof(size_t), 1, out);
     fwrite(&conv.out_channels, sizeof(size_t), 1, out);
     fwrite(&conv.kernel_size, sizeof(size_t), 1, out);
 
+    // Save all kernels
     for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
         Mat_save(out, conv.kernels[i]);
 
+    // Save all biases
     for (size_t i = 0; i < conv.out_channels; i++)
         Mat_save(out, conv.biases[i]);
 }
@@ -241,26 +297,33 @@ void Conv_save(FILE* out, ConvLayer conv)
 ConvLayer Conv_load(FILE* in)
 {
     char header[8];
+
+    // Read and verify header
     fread(header, sizeof(char), 8, in);
     assert(memcmp(header, "CONVLAYR", 8) == 0);
 
     ConvLayer conv = { 0 };
 
+    // Read basic parameters
     fread(&conv.in_channels, sizeof(size_t), 1, in);
     fread(&conv.out_channels, sizeof(size_t), 1, in);
     fread(&conv.kernel_size, sizeof(size_t), 1, in);
 
+    // Allocate memory
     conv.kernels = malloc(sizeof(Mat) * conv.in_channels * conv.out_channels);
     conv.biases = malloc(sizeof(Mat) * conv.out_channels);
 
+    // Load all kernels
     for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
         conv.kernels[i] = Mat_load(in);
 
+    // Load all biases
     for (size_t i = 0; i < conv.out_channels; i++)
         conv.biases[i] = Mat_load(in);
 
     return conv;
 }
+
 
 // -------------------------
 // MaxPool Layer
@@ -293,7 +356,7 @@ Mat MaxPool2D(Mat input, size_t pool_size, size_t stride)
 }
 
 // -------------------------
-// Flatten
+// Flatten Layer
 // -------------------------
 Mat Flatten(Mat* channels, size_t channel_count)
 {
@@ -329,7 +392,6 @@ typedef struct
     ConvLayer* convs;
 } NN;
 
-
 #define NN_INPUT(nn) (nn).as[0]
 #define NN_OUTPUT(nn) (nn).as[(nn).count]
 
@@ -354,7 +416,36 @@ NN NN_alloc(size_t* arch, size_t arch_count)
         nn.as[i + 1] = Mat_alloc(1, arch[i + 1]);
     }
 
+    nn.conv_count = 0;
+    nn.convs = NULL;
+
     return nn;
+}
+
+void NN_free(NN* nn)
+{
+    if (!nn)
+        return;
+
+    for (size_t i = 0; i < nn->count; i++)
+    {
+        Mat_free(nn->ws[i]);
+        Mat_free(nn->bs[i]);
+        Mat_free(nn->as[i + 1]);
+    }
+
+    Mat_free(nn->as[0]);
+
+    free(nn->ws);
+    free(nn->bs);
+    free(nn->as);
+
+    if (nn->convs)
+        free(nn->convs);
+
+    nn->ws = nn->bs = nn->as = NULL;
+    nn->convs = NULL;
+    nn->count = nn->conv_count = 0;
 }
 
 void NN_rand(NN nn, float low, float high)
@@ -379,8 +470,14 @@ void NN_forward(NN nn)
 
         x = nn.as[i + 1];
     }
+
+    // Apply Softmax to the output of the last layer
+    Mat_softmax_inplace(NN_OUTPUT(nn));
 }
 
+// -------------------------
+// NN Save / Load
+// -------------------------
 void NN_save(FILE* out, NN nn)
 {
     fwrite("NNMODEL", sizeof(char), 7, out);
@@ -401,6 +498,7 @@ void NN_save(FILE* out, NN nn)
 NN NN_load(FILE* in)
 {
     char header[7];
+
     fread(header, sizeof(char), 7, in);
     assert(memcmp(header, "NNMODEL", 7) == 0);
 

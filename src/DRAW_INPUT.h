@@ -25,7 +25,7 @@ void SetScreenConstants(int screen_width, int screen_height)
 
     if (SCREEN_WIDTH > SCREEN_HEIGHT)
     {
-        CANVAS_SIZE = (SCREEN_WIDTH / 3 < SCREEN_HEIGHT / 1.3125f) ? (int)(SCREEN_WIDTH / 3) : (int)(SCREEN_HEIGHT / 1.3125f);
+        CANVAS_SIZE = (SCREEN_WIDTH / 3.0f < SCREEN_HEIGHT / 1.3125f) ? (int)(SCREEN_WIDTH / 3) : (int)(SCREEN_HEIGHT / 1.3125f);
 
         CANVAS_X = (int)(SCREEN_WIDTH - CANVAS_SIZE * 2) / 3;
         CANVAS_Y = (int)(SCREEN_HEIGHT - CANVAS_SIZE * 1.3125f) / 2;

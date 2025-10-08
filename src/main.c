@@ -297,16 +297,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                                 break;
                             }
 
-                            fwrite("NUMDATA", sizeof(char), 8, file);  // header_length = 8
+                            fwrite("NUMDATA", sizeof(char), 7, file);
 
                             fwrite(&count, sizeof(size_t), 1, file);
                         }
                         else
                         {
-                            char header_buf[8]; // header_length = 8
-                            fread(header_buf, sizeof(char), 8, file);   // header_length = 8
+                            char header_buf[7];
+                            fread(header_buf, sizeof(char), 7, file);
 
-                            if (memcmp(header_buf, "NUMDATA", 8) != 0) // header_length = 8
+                            if (memcmp(header_buf, "NUMDATA", 7) != 0)
                             {
                                 fclose(file);
 
@@ -323,7 +323,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         fwrite(data, sizeof(uint8_t), CELL_LEN * CELL_LEN, file);
 
                         count++;
-                        fseek(file, 8, SEEK_SET);   // header_length = 8
+                        fseek(file, 7, SEEK_SET);
                         fwrite(&count, sizeof(size_t), 1, file);
 
                         fclose(file);
@@ -357,10 +357,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                             break;
                         }
 
-                        char header[8];
-                        fread(header, sizeof(char), 8, file);
+                        char header[7];
+                        fread(header, sizeof(char), 7, file);
 
-                        if (memcmp(header, "NUMDATA", 8) != 0)
+                        if (memcmp(header, "NUMDATA", 7) != 0)
                         {
                             fclose(file);
 
@@ -381,7 +381,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                             break;
                         }
 
-                        fseek(file, 8 + sizeof(size_t) + idx * CELL_LEN * CELL_LEN, SEEK_SET);
+                        fseek(file, 7 + sizeof(size_t) + idx * CELL_LEN * CELL_LEN, SEEK_SET);
                         fread(data, sizeof(uint8_t), CELL_LEN * CELL_LEN, file);
 
                         fclose(file);
