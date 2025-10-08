@@ -22,11 +22,16 @@ else()
 endif()
 
 # 실행 파일 1: train
-add_executable(train
+add_executable(
+    train
     src/train.c
- "src/NN.h")
+    "src/NN.h" "src/NN.c"
+)
 
 # 실행 파일 2: predict
-add_executable(predict
+add_executable(
+    predict
     src/main.c
- "src/NN.h")
+    "src/DRAW_INPUT.h" "src/DRAW_INPUT.c"
+    "src/NN.h" "src/NN.c"
+)

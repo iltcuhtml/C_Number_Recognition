@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <windows.h>
 
-#include "NN.h"
 #include "DRAW_INPUT.h"
+#include "NN.h"
 
 #define DEBUG
 
@@ -20,10 +20,12 @@
 #define ID_LOAD_INDEX       1006
 
 NN nn;
+ConvLayer conv;
 uint8_t nn_initialized = 0;
+
 uint8_t quit = 0;
 
-static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static HDC hMemDC = NULL;
     static HBITMAP hBitmap   = NULL;
@@ -36,8 +38,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     static HWND hwndButtonLoad    = NULL;
     static HWND hwndLoadIndex     = NULL;
 
-    static uint8_t* data        = NULL;
-    static uint8_t* loaded_data = NULL;
+    static uint8_t* data = NULL;
 
     static uint8_t drawing = 0;
 
@@ -260,18 +261,42 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                 case ID_BUTTON_PREDICT:
                 {
-                    if (data != NULL)
+                    if (data != NULL && nn_initialized)
                     {
-                        for (int i = 0; i < CELL_LEN * CELL_LEN; i++)
-                            MAT_AT(NN_INPUT(nn), 0, i) = data[i];
+                        size_t img_size = CELL_LEN;
+                        Mat input_image = Mat_alloc(img_size, img_size);
 
-                        NN_forward(nn);
+                        // Copy canvas data to matrix
+                        for (size_t y = 0; y < img_size; y++)
+                            for (size_t x = 0; x < img_size; x++)
+                                MAT_AT(input_image, y, x) = data[y * img_size + x] / 255.0f;
+
+                        // Forward through CNN
+                        Mat* conv_out = malloc(sizeof(Mat) * conv.out_channels);
+                        Mat* pooled = malloc(sizeof(Mat) * conv.out_channels);
+                        Mat flat;
+
+                        CNN_forward_sample(nn, conv, input_image, conv_out, pooled, &flat);
+
                         printf("Prediction:\n");
 
                         for (int i = 0; i < 10; i++)
                             printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
 
                         printf("-----------------\n");
+
+                        // Free memory
+                        for (size_t c = 0; c < conv.out_channels; c++)
+                        {
+                            Mat_free(conv_out[c]);
+                            Mat_free(pooled[c]);
+                        }
+
+                        free(conv_out);
+                        free(pooled);
+
+                        Mat_free(flat);
+                        Mat_free(input_image);
                     }
 
                     break;
@@ -437,12 +462,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 data = NULL;
             }
 
-            if (loaded_data != NULL)
-            {
-                free(loaded_data);
-
-                loaded_data = NULL;
-            }
+            Conv_free(&conv);
 
             PostQuitMessage(0);
 
@@ -463,31 +483,20 @@ int WINAPI WinMain(
     (void)hPrevInstance;
     (void)lpCmdLine;
 
-    FILE* file = fopen("data/model.nn", "rb");
-    
+    FILE* file = fopen("data/model.cnn", "rb");
+
     if (file)
     {
-        nn = NN_load(file);
+        CNN_load(&conv, &nn, file);
 
         fclose(file);
 
-        if (nn.count == 0)
-        {
-            ShowMessage("Failed to load neural network model", TYPE_ERROR);
-            ShowMessage("Prediction will be disabled.", TYPE_INFO);
-
-            NN_free(&nn);
-            ZeroMemory(&nn, sizeof(nn));
-        }
-        else
-            nn_initialized = 1;
+        nn_initialized = 1;
     }
     else
     {
-        ShowMessage("Could not open 'data/model.nn'.", TYPE_ERROR);
+        ShowMessage("Could not open 'data/model.cnn'.", TYPE_ERROR);
         ShowMessage("Prediction will be disabled.", TYPE_INFO);
-
-        ZeroMemory(&nn, sizeof(nn));
     }
 
     WNDCLASS wc = { 0 };
