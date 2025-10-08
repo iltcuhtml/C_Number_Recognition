@@ -111,6 +111,16 @@ void Mat_dot(Mat dst, Mat m1, Mat m2)
                 MAT_AT(dst, i, j) += MAT_AT(m1, i, k) * MAT_AT(m2, k, j);
 }
 
+void Mat_outer(Mat dst, Mat a, Mat b)
+{
+    assert(a.rows == 1 && b.rows == 1);
+    assert(dst.rows == a.cols && dst.cols == b.cols);
+
+    for (size_t i = 0; i < dst.rows; i++)
+        for (size_t j = 0; j < dst.cols; j++)
+            MAT_AT(dst, i, j) = MAT_AT(a, 0, i) * MAT_AT(b, 0, j);
+}
+
 void Mat_sum(Mat dst, Mat m)
 {
     assert(dst.rows == m.rows && dst.cols == m.cols);
@@ -118,6 +128,20 @@ void Mat_sum(Mat dst, Mat m)
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t j = 0; j < dst.cols; j++)
             MAT_AT(dst, i, j) += MAT_AT(m, i, j);
+}
+
+// -------------------------
+// Transpose a matrix
+// -------------------------
+Mat Mat_transpose(Mat m)
+{
+    Mat t = Mat_alloc(m.cols, m.rows);
+
+    for (size_t i = 0; i < m.rows; i++)
+        for (size_t j = 0; j < m.cols; j++)
+            MAT_AT(t, j, i) = MAT_AT(m, i, j);
+
+    return t;
 }
 
 void Mat_relu_inplace(Mat m)
@@ -403,9 +427,9 @@ NN NN_alloc(size_t* arch, size_t arch_count)
 
     nn.count = arch_count - 1;
 
-    nn.ws = malloc(sizeof(Mat) * nn.count);
-    nn.bs = malloc(sizeof(Mat) * nn.count);
-    nn.as = malloc(sizeof(Mat) * arch_count);
+    nn.ws = malloc(nn.count * sizeof(Mat));
+    nn.bs = malloc(nn.count * sizeof(Mat));
+    nn.as = malloc(arch_count * sizeof(Mat));
 
     nn.as[0] = Mat_alloc(1, arch[0]);
 
@@ -476,6 +500,144 @@ void NN_forward(NN nn)
 }
 
 // -------------------------
+// Compute Cross-Entropy Loss
+// -------------------------
+float NN_cost(NN nn, Mat inputs, Mat labels)
+{
+    size_t samples = inputs.rows;
+    float cost = 0.0f;
+
+    for (size_t i = 0; i < samples; i++)
+    {
+        Mat input_row = Mat_row(inputs, i);
+        Mat label_row = Mat_row(labels, i);
+
+        Mat_copy(NN_INPUT(nn), input_row);
+        NN_forward(nn);
+
+        for (size_t j = 0; j < label_row.cols; j++)
+        {
+            float y = MAT_AT(label_row, 0, j);
+            float p = MAT_AT(NN_OUTPUT(nn), 0, j);
+
+            cost -= y * logf(fmaxf(p, 1e-7f));
+        }
+    }
+
+    return cost / samples;
+}
+
+// -------------------------
+// Compute accuracy
+// -------------------------
+float NN_accuracy(NN nn, Mat inputs, Mat labels)
+{
+    size_t samples = inputs.rows;
+    size_t correct = 0;
+
+    for (size_t i = 0; i < samples; i++)
+    {
+        Mat input_row = Mat_row(inputs, i);
+        Mat label_row = Mat_row(labels, i);
+
+        Mat_copy(NN_INPUT(nn), input_row);
+        NN_forward(nn);
+
+        size_t max_idx = 0;
+        float max_val = MAT_AT(NN_OUTPUT(nn), 0, 0);
+
+        for (size_t j = 1; j < NN_OUTPUT(nn).cols; j++)
+            if (MAT_AT(NN_OUTPUT(nn), 0, j) > max_val)
+            {
+                max_val = MAT_AT(NN_OUTPUT(nn), 0, j);
+                max_idx = j;
+            }
+
+        for (size_t j = 0; j < label_row.cols; j++)
+            if (MAT_AT(label_row, 0, j) == 1.0f && j == max_idx)
+            {
+                correct++;
+                break;
+            }
+    }
+
+    return (float)correct / samples;
+}
+
+// -------------------------
+// Backprop for FC NN only
+// -------------------------
+void NN_backprop(NN nn, NN grad, Mat inputs, Mat labels)
+{
+    size_t samples = inputs.rows;
+
+    for (size_t i = 0; i < samples; i++)
+    {
+        Mat input_row = Mat_row(inputs, i);
+        Mat label_row = Mat_row(labels, i);
+
+        // Forward pass
+        Mat_copy(NN_INPUT(nn), input_row);
+        NN_forward(nn);
+
+        // Compute output error (Softmax + CrossEntropy)
+        for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
+            MAT_AT(grad.as[nn.count], 0, j) = MAT_AT(NN_OUTPUT(nn), 0, j) - MAT_AT(label_row, 0, j);
+
+        // Backprop through layers
+        for (size_t l = nn.count; l-- > 0; )
+        {
+            Mat* dA = &grad.as[l + 1];
+            Mat* A_prev = &nn.as[l];
+            Mat* W = &nn.ws[l];
+            Mat* dW = &grad.ws[l];
+            Mat* db = &grad.bs[l];
+
+            // Gradient w.r.t weights: dW = A_prev^T * dA
+            Mat_dot(*dW, *A_prev, *dA);
+
+            // Gradient w.r.t biases: db = dA
+            Mat_copy(*db, *dA);
+
+            // Gradient w.r.t previous activation: dA_prev = dA * W^T
+            Mat dA_prev = Mat_alloc(A_prev->rows, A_prev->cols);
+
+            Mat_dot(dA_prev, *dA, Mat_transpose(*W));
+            Mat_copy(*dA, dA_prev);
+            Mat_free(dA_prev);
+
+            // Apply ReLU derivative
+            Mat_drelu_inplace(*A_prev);
+        }
+    }
+
+    // Average gradients over samples
+    for (size_t i = 0; i < nn.count; i++)
+    {
+        for (size_t j = 0; j < grad.ws[i].rows * grad.ws[i].cols; j++)
+            grad.ws[i].es[j] /= (float)samples;
+
+        for (size_t j = 0; j < grad.bs[i].rows * grad.bs[i].cols; j++)
+            grad.bs[i].es[j] /= (float)samples;
+    }
+}
+
+// -------------------------
+// Gradient descent update
+// -------------------------
+void NN_learn(NN nn, NN grad, float lr)
+{
+    for (size_t i = 0; i < nn.count; i++)
+    {
+        for (size_t j = 0; j < nn.ws[i].rows * nn.ws[i].cols; j++)
+            nn.ws[i].es[j] -= lr * grad.ws[i].es[j];
+
+        for (size_t j = 0; j < nn.bs[i].rows * nn.bs[i].cols; j++)
+            nn.bs[i].es[j] -= lr * grad.bs[i].es[j];
+    }
+}
+
+// -------------------------
 // NN Save / Load
 // -------------------------
 void NN_save(FILE* out, NN nn)
@@ -537,4 +699,127 @@ NN NN_load(FILE* in)
     free(arch);
 
     return nn;
+}
+
+// -------------------------
+// Forward for a single sample
+// -------------------------
+void CNN_forward_sample(NN nn, ConvLayer conv, Mat input_image, Mat* conv_out, Mat* pooled, Mat* flat)
+{
+    // Conv layer forward
+    Mat input_channels[1] = { input_image };
+    Conv_forward(conv, input_channels, conv_out);
+
+    // MaxPool 2x2 stride 2
+    for (size_t c = 0; c < conv.out_channels; c++)
+        pooled[c] = MaxPool2D(conv_out[c], 2, 2);
+
+    // Flatten
+    *flat = Flatten(pooled, conv.out_channels);
+
+    // Copy flattened input to FC NN input
+    Mat_copy(NN_INPUT(nn), *flat);
+
+    // Forward FC NN
+    NN_forward(nn);
+}
+
+// -------------------------
+// Backprop for FC NN
+// -------------------------
+void CNN_backprop_sample(NN nn, NN grad, Mat flat, Mat label)
+{
+    // Copy input
+    Mat_copy(NN_INPUT(nn), flat);
+
+    // Forward pass
+    NN_forward(nn);
+
+    // Compute output error (Softmax + CrossEntropy)
+    for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
+        MAT_AT(grad.as[nn.count], 0, j) = MAT_AT(NN_OUTPUT(nn), 0, j) - MAT_AT(label, 0, j);
+
+    // Backprop through FC layers
+    for (size_t l = nn.count; l-- > 0; )
+    {
+        Mat* dA = &grad.as[l + 1];
+        Mat* A_prev = &nn.as[l];
+        Mat* W = &nn.ws[l];
+        Mat* dW = &grad.ws[l];
+        Mat* db = &grad.bs[l];
+
+        // Gradient w.r.t weights: dW = A_prev^T * dA
+        Mat_outer(*dW, *A_prev, *dA);
+
+        // Gradient w.r.t biases: db = dA
+        Mat_copy(*db, *dA);
+
+        // Gradient w.r.t previous activation: dA_prev = dA * W^T
+        Mat W_T = Mat_transpose(*W);
+        Mat dA_prev = Mat_alloc(A_prev->rows, A_prev->cols);
+
+        Mat_dot(dA_prev, *dA, W_T);
+
+        Mat_copy(*dA, dA_prev);
+        Mat_free(dA_prev);
+        Mat_free(W_T);
+
+        // Apply ReLU derivative
+        Mat_drelu_inplace(*A_prev);
+    }
+}
+
+void CNN_update(NN nn, NN grad, float lr)
+{
+    for (size_t i = 0; i < nn.count; i++)
+    {
+        for (size_t j = 0; j < nn.ws[i].rows * nn.ws[i].cols; j++)
+            nn.ws[i].es[j] -= lr * grad.ws[i].es[j];
+
+        for (size_t j = 0; j < nn.bs[i].rows * nn.bs[i].cols; j++)
+            nn.bs[i].es[j] -= lr * grad.bs[i].es[j];
+    }
+}
+
+// -------------------------
+// Train CNN for one epoch
+// -------------------------
+void CNN_train_epoch(NN nn, NN grad, ConvLayer conv, Mat inputs, Mat labels, float lr)
+{
+    size_t samples = inputs.rows;
+
+    // Dynamic arrays
+    Mat* conv_out = malloc(sizeof(Mat) * conv.out_channels);
+    Mat* pooled = malloc(sizeof(Mat) * conv.out_channels);
+    Mat* flat = malloc(sizeof(Mat));
+
+    for (size_t i = 0; i < samples; i++)
+    {
+        Mat input_row = Mat_row(inputs, i);
+        Mat label_row = Mat_row(labels, i);
+
+        Mat input_image = Mat_alloc(28, 28);
+
+        for (size_t y = 0; y < 28; y++)
+            for (size_t x = 0; x < 28; x++)
+                MAT_AT(input_image, y, x) = MAT_AT(input_row, 0, y * 28 + x);
+
+        CNN_forward_sample(nn, conv, input_image, conv_out, pooled, flat);
+        CNN_backprop_sample(nn, grad, *flat, label_row);
+        CNN_update(nn, grad, lr);
+
+        Mat_free(input_image);
+
+        for (size_t c = 0; c < conv.out_channels; c++)
+        {
+            Mat_free(conv_out[c]);
+            Mat_free(pooled[c]);
+        }
+
+        Mat_free(*flat);
+    }
+
+    free(conv_out);
+    free(pooled);
+    free(flat);
 }
