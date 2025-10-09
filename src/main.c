@@ -267,45 +267,77 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         size_t img_size = CELL_LEN;
                         Mat input_image = Mat_alloc(img_size, img_size);
 
-                        // Copy canvas data to matrix
+                        // Normalize canvas data (0~1)
                         for (size_t y = 0; y < img_size; y++)
                             for (size_t x = 0; x < img_size; x++)
                                 MAT_AT(input_image, y, x) = data[y * img_size + x] / 255.0f;
-
-                        // Allocate feature maps
+                        
                         size_t conv_out_h = img_size - conv.kernel_size + 1;
                         size_t conv_out_w = img_size - conv.kernel_size + 1;
+                        
                         size_t pooled_h = conv_out_h / 2;
                         size_t pooled_w = conv_out_w / 2;
 
+                        // Allocate conv_out and pooled
                         Mat* conv_out = malloc(sizeof(Mat) * conv.out_channels);
                         Mat* pooled = malloc(sizeof(Mat) * conv.out_channels);
-                        
-                        // Check malloc success
-                        if (conv_out == NULL || pooled == NULL)
+
+                        if (!conv_out || !pooled)
                         {
+                            free(conv_out);
+                            free(pooled);
+
+                            Mat_free(input_image);
+
                             ShowMessage("Memory allocation failed for conv_out or pooled.", TYPE_ERROR);
                             
-							quit = 1;
-
                             break;
                         }
+
+                        int alloc_failed = 0;
 
                         for (size_t c = 0; c < conv.out_channels; c++)
                         {
                             conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
                             pooled[c] = Mat_alloc(pooled_h, pooled_w);
+
+                            if (!conv_out[c].es || !pooled[c].es)
+                            {
+                                alloc_failed = 1;
+
+                                break;
+                            }
                         }
 
+                        if (alloc_failed)
+                        {
+                            for (size_t c = 0; c < conv.out_channels; c++)
+                            {
+                                Mat_free(conv_out[c]);
+                                Mat_free(pooled[c]);
+                            }
+
+                            free(conv_out);
+                            free(pooled);
+
+                            Mat_free(input_image);
+
+                            ShowMessage("Mat allocation failed", TYPE_ERROR);
+                            
+                            break;
+                        }
+
+                        // CNN forward
                         Mat flat;
 
                         CNN_forward(nn, conv, input_image, conv_out, pooled, &flat);
 
+                        // Print prediction
                         printf("Prediction:\n");
 
                         for (int i = 0; i < 10; i++)
                             printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
-
+                        
                         printf("-----------------\n");
 
                         // Free memory

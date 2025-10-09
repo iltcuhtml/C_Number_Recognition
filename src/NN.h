@@ -44,7 +44,6 @@ void Mat_resize(Mat* m, size_t rows, size_t cols);
 Mat Mat_transpose(Mat m);
 
 void Mat_relu_inplace(Mat m);
-void Mat_drelu_inplace(Mat m);
 void Mat_softmax_inplace(Mat m);
 
 void Mat_save(FILE* out, Mat m);
@@ -77,6 +76,8 @@ ConvLayer Conv_load(FILE* in);
 // Pooling & Flatten
 // -------------------------
 Mat Pool2D(Mat input, size_t pool_size, size_t stride);
+void MaxPool2D_backprop(Mat pooled_grad, Mat pooled, Mat conv_out, Mat* d_conv_out);
+
 Mat Flatten(Mat* channels, size_t channel_count);
 
 // -------------------------
@@ -113,9 +114,8 @@ NN NN_load(FILE* in);
 // CNN API
 // -------------------------
 void CNN_forward(NN nn, ConvLayer conv, Mat input_image, Mat* conv_out, Mat* pooled, Mat* flat);
-void CNN_backprop(NN nn, NN grad, Mat flat, Mat label);
+void CNN_backprop(NN nn, NN grad, Mat flat, Mat label, Mat* conv_out, Mat* pooled, ConvLayer* conv);
 
-void CNN_train_step(NN nn, NN grad_fc, ConvLayer* conv, Mat input_image, Mat label, float lr);
 void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels, float lr, int epoch_num, int total_epochs);
 
 void CNN_save(FILE* file, ConvLayer conv, NN nn);

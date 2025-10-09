@@ -19,9 +19,9 @@ float drelu(float x)
 Mat Mat_alloc(size_t rows, size_t cols)
 {
     Mat m = { rows, cols, cols, malloc(sizeof(float) * rows * cols) };
-
+    
     assert(m.es != NULL);
-
+    
     return m;
 }
 
@@ -41,7 +41,7 @@ void Mat_fill(Mat m, float x)
 void Mat_copy(Mat dst, Mat src)
 {
     assert(dst.rows == src.rows && dst.cols == src.cols);
-
+    
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t j = 0; j < dst.cols; j++)
             MAT_AT(dst, i, j) = MAT_AT(src, i, j);
@@ -68,9 +68,9 @@ Mat Mat_row(Mat m, size_t row)
 void Mat_dot(Mat dst, Mat m1, Mat m2)
 {
     assert(m1.cols == m2.rows && dst.rows == m1.rows && dst.cols == m2.cols);
-
+    
     Mat_fill(dst, 0);
-
+    
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t j = 0; j < dst.cols; j++)
             for (size_t k = 0; k < m1.cols; k++)
@@ -81,7 +81,7 @@ void Mat_outer(Mat dst, Mat a, Mat b)
 {
     assert(a.rows == 1 && b.rows == 1);
     assert(dst.rows == a.cols && dst.cols == b.cols);
-
+    
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t j = 0; j < dst.cols; j++)
             MAT_AT(dst, i, j) = MAT_AT(a, 0, i) * MAT_AT(b, 0, j);
@@ -90,7 +90,7 @@ void Mat_outer(Mat dst, Mat a, Mat b)
 void Mat_sum(Mat dst, Mat m)
 {
     assert(dst.rows == m.rows && dst.cols == m.cols);
-
+    
     for (size_t i = 0; i < dst.rows; i++)
         for (size_t j = 0; j < dst.cols; j++)
             MAT_AT(dst, i, j) += MAT_AT(m, i, j);
@@ -98,23 +98,25 @@ void Mat_sum(Mat dst, Mat m)
 
 void Mat_resize(Mat* m, size_t rows, size_t cols)
 {
-    if (m->es) free(m->es);
-
+    if (m->es)
+        free(m->es);
+    
     m->es = malloc(sizeof(float) * rows * cols);
-
+    
     m->rows = rows;
     m->cols = cols;
+    
     m->stride = cols;
 }
 
 Mat Mat_transpose(Mat m)
 {
     Mat t = Mat_alloc(m.cols, m.rows);
-
+    
     for (size_t i = 0; i < m.rows; i++)
         for (size_t j = 0; j < m.cols; j++)
             MAT_AT(t, j, i) = MAT_AT(m, i, j);
-
+    
     return t;
 }
 
@@ -126,28 +128,22 @@ void Mat_relu_inplace(Mat m)
                 MAT_AT(m, i, j) = 0;
 }
 
-void Mat_drelu_inplace(Mat m)
-{
-    for (size_t i = 0; i < m.rows; i++)
-        for (size_t j = 0; j < m.cols; j++)
-            MAT_AT(m, i, j) = drelu(MAT_AT(m, i, j));
-}
-
 void Mat_softmax_inplace(Mat m)
 {
     for (size_t i = 0; i < m.rows; i++)
     {
         float max_val = -FLT_MAX;
-
+        
         for (size_t j = 0; j < m.cols; j++)
             if (MAT_AT(m, i, j) > max_val)
                 max_val = MAT_AT(m, i, j);
 
         float sum = 0.0f;
-
+        
         for (size_t j = 0; j < m.cols; j++)
         {
             MAT_AT(m, i, j) = expf(MAT_AT(m, i, j) - max_val);
+            
             sum += MAT_AT(m, i, j);
         }
 
@@ -169,27 +165,29 @@ void Mat_save(FILE* out, Mat m)
 Mat Mat_load(FILE* in)
 {
     char header[7];
-
     fread(header, sizeof(char), 7, in);
+
     assert(memcmp(header, "MATDATA", 7) == 0);
 
     size_t rows, cols;
+
     fread(&rows, sizeof(size_t), 1, in);
     fread(&cols, sizeof(size_t), 1, in);
 
     Mat m = Mat_alloc(rows, cols);
+
     fread(m.es, sizeof(float), rows * cols, in);
 
     return m;
 }
 
 // -------------------------
-// Convolution Layer
+// Conv Layer
 // -------------------------
 ConvLayer Conv_alloc(size_t in_channels, size_t out_channels, size_t kernel_size)
 {
     ConvLayer conv = { 0 };
-
+    
     conv.in_channels = in_channels;
     conv.out_channels = out_channels;
     conv.kernel_size = kernel_size;
@@ -200,6 +198,7 @@ ConvLayer Conv_alloc(size_t in_channels, size_t out_channels, size_t kernel_size
     for (size_t oc = 0; oc < out_channels; oc++)
     {
         conv.biases[oc] = Mat_alloc(1, 1);
+        
         MAT_AT(conv.biases[oc], 0, 0) = 0;
 
         for (size_t ic = 0; ic < in_channels; ic++)
@@ -218,7 +217,7 @@ void Conv_free(ConvLayer* conv)
     {
         for (size_t i = 0; i < conv->out_channels * conv->in_channels; i++)
             Mat_free(conv->kernels[i]);
-
+        
         free(conv->kernels);
     }
 
@@ -226,27 +225,24 @@ void Conv_free(ConvLayer* conv)
     {
         for (size_t i = 0; i < conv->out_channels; i++)
             Mat_free(conv->biases[i]);
-
+        
         free(conv->biases);
     }
 
     conv->kernels = NULL;
     conv->biases = NULL;
+    
     conv->in_channels = conv->out_channels = conv->kernel_size = 0;
 }
 
-// Compute kernel gradient for one input channel and one output channel
-// input: H_in x W_in
-// d_out: H_out x W_out  (H_out = H_in - k + 1)
-// kernel_grad: k x k (assumed allocated & filled zero)
 void Conv_compute_kernel_grad(Mat input, Mat d_out, Mat kernel_grad)
 {
-    size_t k = kernel_grad.rows; // kernel is square
+    size_t k = kernel_grad.rows;
 
     size_t out_rows = d_out.rows;
     size_t out_cols = d_out.cols;
 
-    Mat_fill(*(&kernel_grad), 0.0f); // ensure kernel_grad zeroed
+    Mat_fill(*(&kernel_grad), 0.0f);
 
     for (size_t y = 0; y < out_rows; y++)
         for (size_t x = 0; x < out_cols; x++)
@@ -270,7 +266,7 @@ void Conv_forward_single(Mat kernel, Mat input, Mat* output)
         for (size_t x = 0; x < out_cols; x++)
         {
             float sum = 0.0f;
-
+            
             for (size_t ky = 0; ky < kernel.rows; ky++)
                 for (size_t kx = 0; kx < kernel.cols; kx++)
                     sum += MAT_AT(input, y + ky, x + kx) * MAT_AT(kernel, ky, kx);
@@ -293,8 +289,9 @@ void Conv_forward(ConvLayer conv, Mat* input_channels, Mat* output_channels)
         for (size_t ic = 0; ic < conv.in_channels; ic++)
         {
             Mat temp;
-
+            
             Conv_forward_single(conv.kernels[oc * conv.in_channels + ic], input_channels[ic], &temp);
+            
             Mat_sum(output_channels[oc], temp);
             Mat_free(temp);
         }
@@ -305,19 +302,15 @@ void Conv_forward(ConvLayer conv, Mat* input_channels, Mat* output_channels)
 
 void Conv_save(FILE* out, ConvLayer conv)
 {
-    // Write header
     fwrite("CONVLAYR", sizeof(char), 8, out);
 
-    // Write basic parameters
     fwrite(&conv.in_channels, sizeof(size_t), 1, out);
     fwrite(&conv.out_channels, sizeof(size_t), 1, out);
     fwrite(&conv.kernel_size, sizeof(size_t), 1, out);
 
-    // Save all kernels
     for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
         Mat_save(out, conv.kernels[i]);
 
-    // Save all biases
     for (size_t i = 0; i < conv.out_channels; i++)
         Mat_save(out, conv.biases[i]);
 }
@@ -325,36 +318,28 @@ void Conv_save(FILE* out, ConvLayer conv)
 ConvLayer Conv_load(FILE* in)
 {
     char header[8];
-
-    // Read and verify header
     fread(header, sizeof(char), 8, in);
+
     assert(memcmp(header, "CONVLAYR", 8) == 0);
 
     ConvLayer conv = { 0 };
 
-    // Read basic parameters
     fread(&conv.in_channels, sizeof(size_t), 1, in);
     fread(&conv.out_channels, sizeof(size_t), 1, in);
     fread(&conv.kernel_size, sizeof(size_t), 1, in);
 
-    // Allocate memory
     conv.kernels = malloc(sizeof(Mat) * conv.in_channels * conv.out_channels);
     conv.biases = malloc(sizeof(Mat) * conv.out_channels);
 
-    // Load all kernels
     for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
         conv.kernels[i] = Mat_load(in);
 
-    // Load all biases
     for (size_t i = 0; i < conv.out_channels; i++)
         conv.biases[i] = Mat_load(in);
 
     return conv;
 }
 
-// -------------------------
-// Pooling & Flatten
-// -------------------------
 Mat Pool2D(Mat input, size_t pool_size, size_t stride)
 {
     size_t out_rows = (input.rows - pool_size) / stride + 1;
@@ -366,12 +351,12 @@ Mat Pool2D(Mat input, size_t pool_size, size_t stride)
         for (size_t x = 0; x < out_cols; x++)
         {
             float max_val = -FLT_MAX;
-
+            
             for (size_t py = 0; py < pool_size; py++)
                 for (size_t px = 0; px < pool_size; px++)
                 {
                     float v = MAT_AT(input, y * stride + py, x * stride + px);
-
+                    
                     if (v > max_val)
                         max_val = v;
                 }
@@ -382,17 +367,40 @@ Mat Pool2D(Mat input, size_t pool_size, size_t stride)
     return out;
 }
 
+void MaxPool2D_backprop(Mat pooled_grad, Mat pooled, Mat conv_out, Mat* d_conv_out)
+{
+    Mat_fill(*d_conv_out, 0.0f);
+
+    for (size_t y = 0; y < pooled.rows; y++)
+        for (size_t x = 0; x < pooled.cols; x++)
+        {
+            float max_val = -FLT_MAX;
+            size_t max_i = 0, max_j = 0;
+
+            for (size_t py = 0; py < 2; py++)
+                for (size_t px = 0; px < 2; px++)
+                {
+                    size_t iy = y * 2 + py;
+                    size_t ix = x * 2 + px;
+                    float v = MAT_AT(conv_out, iy, ix);
+                    if (v > max_val) { max_val = v; max_i = iy; max_j = ix; }
+                }
+
+            MAT_AT(*d_conv_out, max_i, max_j) = MAT_AT(pooled_grad, y, x);
+        }
+}
+
 Mat Flatten(Mat* channels, size_t channel_count)
 {
     size_t total = 0;
-
+    
     for (size_t c = 0; c < channel_count; c++)
         total += channels[c].rows * channels[c].cols;
 
     Mat out = Mat_alloc(1, total);
 
     size_t idx = 0;
-
+    
     for (size_t c = 0; c < channel_count; c++)
         for (size_t i = 0; i < channels[c].rows; i++)
             for (size_t j = 0; j < channels[c].cols; j++)
@@ -489,14 +497,15 @@ void NN_forward(NN nn)
     for (size_t i = 0; i < nn.count; i++)
     {
         Mat_fill(nn.as[i + 1], 0);
+
         Mat_dot(nn.as[i + 1], x, nn.ws[i]);
         Mat_sum(nn.as[i + 1], nn.bs[i]);
+
         Mat_relu_inplace(nn.as[i + 1]);
 
         x = nn.as[i + 1];
     }
 
-    // Apply Softmax to the output of the last layer
     Mat_softmax_inplace(NN_OUTPUT(nn));
 }
 
@@ -532,8 +541,8 @@ void NN_save(FILE* out, NN nn)
 NN NN_load(FILE* in)
 {
     char header[7];
-
     fread(header, sizeof(char), 7, in);
+
     assert(memcmp(header, "NNMODEL", 7) == 0);
 
     NN nn = { 0 };
@@ -541,7 +550,7 @@ NN NN_load(FILE* in)
     fread(&nn.count, sizeof(size_t), 1, in);
     fread(&nn.conv_count, sizeof(size_t), 1, in);
 
-    size_t* arch = malloc(sizeof(size_t) * (nn.count + 1));
+    size_t * arch = malloc(sizeof(size_t) * (nn.count + 1));
 
     nn.ws = malloc(sizeof(Mat) * nn.count);
     nn.bs = malloc(sizeof(Mat) * nn.count);
@@ -551,10 +560,12 @@ NN NN_load(FILE* in)
     {
         nn.ws[i] = Mat_load(in);
         nn.bs[i] = Mat_load(in);
+
         arch[i + 1] = nn.ws[i].cols;
     }
 
     arch[0] = nn.ws[0].rows;
+
     nn.as[0] = Mat_alloc(1, arch[0]);
 
     for (size_t i = 0; i < nn.count; i++)
@@ -563,7 +574,7 @@ NN NN_load(FILE* in)
     if (nn.conv_count > 0)
     {
         nn.convs = malloc(sizeof(ConvLayer) * nn.conv_count);
-
+        
         for (size_t i = 0; i < nn.conv_count; i++)
             nn.convs[i] = Conv_load(in);
     }
@@ -578,42 +589,35 @@ NN NN_load(FILE* in)
 // -------------------------
 void CNN_forward(NN nn, ConvLayer conv, Mat input_image, Mat* conv_out, Mat* pooled, Mat* flat)
 {
-    assert(conv_out && pooled && flat);
-
-    // Conv layer forward
     Mat input_channels[1] = { input_image };
+    
     Conv_forward(conv, input_channels, conv_out);
 
-    // MaxPool 2x2 stride 2
     for (size_t c = 0; c < conv.out_channels; c++)
         pooled[c] = Pool2D(conv_out[c], 2, 2);
 
-    // Flatten pooled
     *flat = Flatten(pooled, conv.out_channels);
 
-    // Ensure NN input matches
     if (NN_INPUT(nn).cols != flat->cols)
     {
-        Mat_resize(&NN_INPUT(nn), 1, flat->cols);
-        Mat_fill(NN_INPUT(nn), 0.0f);
+        Mat_free(NN_INPUT(nn));
+        
+        NN_INPUT(nn) = Mat_alloc(1, flat->cols);
     }
 
     Mat_copy(NN_INPUT(nn), *flat);
-
-    // Forward through FC layers
+    
     NN_forward(nn);
 }
 
-void CNN_backprop(NN nn, NN grad, Mat flat, Mat label)
+void CNN_backprop(NN nn, NN grad, Mat flat, Mat label, Mat* conv_out, Mat* pooled, ConvLayer* conv)
 {
     Mat_copy(NN_INPUT(nn), flat);
     NN_forward(nn);
 
-    // Output error
     for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
         MAT_AT(grad.as[nn.count], 0, j) = MAT_AT(NN_OUTPUT(nn), 0, j) - MAT_AT(label, 0, j);
 
-    // Backprop through FC layers
     for (size_t l = nn.count; l-- > 0; )
     {
         Mat* dA = &grad.as[l + 1];
@@ -622,254 +626,237 @@ void CNN_backprop(NN nn, NN grad, Mat flat, Mat label)
         Mat* dW = &grad.ws[l];
         Mat* db = &grad.bs[l];
 
-        // Gradient w.r.t weights: outer product
-        Mat_outer(*dW, *A_prev, *dA);
+        Mat A_prev_T = Mat_transpose(*A_prev);
+        
+        Mat_dot(*dW, A_prev_T, *dA);
+        Mat_free(A_prev_T);
 
-        // Gradient w.r.t biases
         Mat_copy(*db, *dA);
 
-        // Gradient w.r.t previous activation
         Mat W_T = Mat_transpose(*W);
         Mat dA_prev = Mat_alloc(A_prev->rows, A_prev->cols);
-
+        
         Mat_dot(dA_prev, *dA, W_T);
-        Mat_copy(*dA, dA_prev);
-        Mat_free(dA_prev);
         Mat_free(W_T);
 
-        // ReLU derivative
-        Mat_drelu_inplace(*A_prev);
-    }
-}
+        for (size_t i = 0; i < A_prev->rows; i++)
+            for (size_t j = 0; j < A_prev->cols; j++)
+                MAT_AT(dA_prev, i, j) *= MAT_AT(*A_prev, i, j) > 0 ? 1.0f : 0.0f;
 
-void CNN_train_step(NN nn, NN grad_fc, ConvLayer* conv, Mat input_image, Mat label, float lr)
-{
-    // Forward: conv -> relu -> pool -> flatten -> FC
-    Mat* conv_out = malloc(sizeof(Mat) * conv->out_channels);
-    Mat* pooled = malloc(sizeof(Mat) * conv->out_channels);
-
-    if (!conv_out || !pooled) { perror("malloc failed"); exit(1); }
-
-    Mat flat;
-    CNN_forward(nn, *conv, input_image, conv_out, pooled, &flat);
-
-    // Zero gradients in grad_fc
-    NN_zero_grad(grad_fc);
-
-    // Compute FC output error in grad_fc (softmax + cross-entropy)
-    for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
-        MAT_AT(grad_fc.as[nn.count], 0, j) = MAT_AT(NN_OUTPUT(nn), 0, j) - MAT_AT(label, 0, j);
-
-    // Backprop through FC (fills grad_fc.ws, grad_fc.bs and produces grad_fc.as[0] as d(flat))
-    CNN_backprop(nn, grad_fc, flat, label);
-
-    // grad_fc.as[0] now contains gradient w.r.t flattened input (shape 1 x flat.cols)
-    // Map flattened gradient back to pooled per-channel gradients
-    size_t pooled_r = pooled[0].rows;
-    size_t pooled_c = pooled[0].cols;
-    size_t per_channel_size = pooled_r * pooled_c;
-
-    // For each output channel produce d_pooled (pooled gradient)
-    Mat* d_pooled = malloc(sizeof(Mat) * conv->out_channels);
-
-    if (!d_pooled) { perror("malloc failed"); exit(1); }
-
-    for (size_t oc = 0; oc < conv->out_channels; oc++)
-    {
-        d_pooled[oc] = Mat_alloc(pooled_r, pooled_c);
-        Mat_fill(d_pooled[oc], 0.0f);
-
-        for (size_t y = 0; y < pooled_r; y++)
-            for (size_t x = 0; x < pooled_c; x++)
-            {
-                size_t idx = oc * per_channel_size + y * pooled_c + x;
-                float g = 0.0f;
-
-                if (idx < grad_fc.as[0].cols)
-                    g = MAT_AT(grad_fc.as[0], 0, idx);
-
-                MAT_AT(d_pooled[oc], y, x) = g;
-            }
+        Mat_copy(*dA, dA_prev);
+        Mat_free(dA_prev);
     }
 
-    // MaxPool backprop: expand d_pooled to d_conv_out by placing pooled gradient at max location in 2x2
     Mat* d_conv_out = malloc(sizeof(Mat) * conv->out_channels);
 
-    if (!d_conv_out) { perror("malloc failed"); exit(1); }
+    for (size_t c = 0; c < conv->out_channels; c++)
+        d_conv_out[c] = Mat_alloc(conv_out[c].rows, conv_out[c].cols);
 
-    for (size_t oc = 0; oc < conv->out_channels; oc++)
+    for (size_t c = 0; c < conv->out_channels; c++)
     {
-        Mat conv_o = conv_out[oc];
-        d_conv_out[oc] = Mat_alloc(conv_o.rows, conv_o.cols);
+        Mat pooled_grad = Mat_alloc(pooled[c].rows, pooled[c].cols);
 
-        Mat_fill(d_conv_out[oc], 0.0f);
+        for (size_t i = 0; i < pooled[c].rows; i++)
+            for (size_t j = 0; j < pooled[c].cols; j++)
+                MAT_AT(pooled_grad, i, j) = MAT_AT(NN_INPUT(nn), 0, c * pooled[c].rows * pooled[c].cols + i * pooled[c].cols + j);
 
-        for (size_t py = 0; py < pooled_r; py++)
-            for (size_t px = 0; px < pooled_c; px++)
-            {
-                float grad_val = MAT_AT(d_pooled[oc], py, px);
+            MaxPool2D_backprop(pooled_grad, pooled[c], conv_out[c], &d_conv_out[c]);
+            
+            Mat_free(pooled_grad);
+        }
 
-                // find max position in corresponding 2x2 region
-                float maxv = -FLT_MAX;
-                size_t max_y = 0, max_x = 0;
-
-                for (size_t ry = 0; ry < 2; ry++)
-                    for (size_t rx = 0; rx < 2; rx++)
-                    {
-                        size_t iy = py * 2 + ry;
-                        size_t ix = px * 2 + rx;
-
-                        if (MAT_AT(conv_o, iy, ix) > maxv)
-                        {
-                            maxv = MAT_AT(conv_o, iy, ix);
-
-                            max_y = iy;
-                            max_x = ix;
-                        }
-                    }
-
-
-                MAT_AT(d_conv_out[oc], max_y, max_x) = grad_val;
-            }
-    }
-
-    // Conv backprop: compute kernel gradients per (out_channel, in_channel)
     for (size_t oc = 0; oc < conv->out_channels; oc++)
     {
         for (size_t ic = 0; ic < conv->in_channels; ic++)
         {
-            Mat kernel_grad = Mat_alloc(
-                conv->kernels[oc * conv->in_channels + ic].rows,
-                conv->kernels[oc * conv->in_channels + ic].cols
-            );
-
-            Mat_fill(kernel_grad, 0.0f);
-
-            // compute kernel gradient using input_image and d_conv_out[oc]
-            Conv_compute_kernel_grad(input_image, d_conv_out[oc], kernel_grad);
-
-            // Update kernel weights (SGD)
             Mat* kernel = &conv->kernels[oc * conv->in_channels + ic];
+            Mat kernel_grad = Mat_alloc(kernel->rows, kernel->cols);
+            
+            Mat_fill(kernel_grad, 0.0f);
+            
+            Conv_compute_kernel_grad(conv_out[ic], d_conv_out[oc], kernel_grad);
 
             for (size_t k = 0; k < kernel->rows * kernel->cols; k++)
-                kernel->es[k] -= lr * kernel_grad.es[k];
+                kernel->es[k] -= 0.01f * kernel_grad.es[k];
 
             Mat_free(kernel_grad);
         }
 
-        // Update bias (sum of d_conv_out elements)
         float bias_grad = 0.0f;
-
+        
         for (size_t y = 0; y < d_conv_out[oc].rows; y++)
             for (size_t x = 0; x < d_conv_out[oc].cols; x++)
                 bias_grad += MAT_AT(d_conv_out[oc], y, x);
 
-        MAT_AT(conv->biases[oc], 0, 0) -= lr * bias_grad;
+        MAT_AT(conv->biases[oc], 0, 0) -= 0.01f * bias_grad;
     }
 
-    // Update FC weights (grad_fc contains dW, db)
-    NN_learn(nn, grad_fc, lr);
-
-    // Free temp memory
     for (size_t c = 0; c < conv->out_channels; c++)
-    {
-        Mat_free(conv_out[c]);
-        Mat_free(pooled[c]);
-        Mat_free(d_pooled[c]);
         Mat_free(d_conv_out[c]);
-    }
 
-    free(conv_out);
-    free(pooled);
-    free(d_pooled);
     free(d_conv_out);
-
-    Mat_free(flat);
 }
 
 void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels, float lr, int epoch_num, int total_epochs)
 {
     size_t samples = inputs.rows;
+    size_t img_size = (size_t)sqrt((double)inputs.cols);
+    
+    size_t conv_out_h = img_size - conv->kernel_size + 1;
+    size_t conv_out_w = conv_out_h;
+    
+    size_t pooled_h = conv_out_h / 2;
+    size_t pooled_w = conv_out_w / 2;
+
+    Mat* conv_out = malloc(sizeof(Mat) * conv->out_channels);
+    Mat* pooled = malloc(sizeof(Mat) * conv->out_channels);
+    
+    Mat* d_conv_out = malloc(sizeof(Mat) * conv->out_channels);
+    
+    Mat flat;
+
+    for (size_t c = 0; c < conv->out_channels; c++)
+    {
+        conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
+        pooled[c] = Mat_alloc(pooled_h, pooled_w);
+        
+        d_conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
+    }
+
     float epoch_cost = 0.0f;
     size_t correct = 0;
 
     for (size_t i = 0; i < samples; i++)
     {
         Mat input_row = Mat_row(inputs, i);
-        Mat label_row = Mat_row(labels, i);
-
-        size_t img_size = (size_t)sqrt((double)input_row.cols);
         Mat input_image = Mat_alloc(img_size, img_size);
 
         for (size_t y = 0; y < img_size; y++)
             for (size_t x = 0; x < img_size; x++)
                 MAT_AT(input_image, y, x) = MAT_AT(input_row, 0, y * img_size + x);
 
-        // Forward + backprop + update
-        CNN_train_step(nn, grad_fc, conv, input_image, label_row, lr);
+        Mat label_row = Mat_row(labels, i);
+        
+        CNN_forward(nn, *conv, input_image, conv_out, pooled, &flat);
+        
+        NN_zero_grad(grad_fc);
 
-        // Evaluate to accumulate cost and accuracy (forward again)
-        size_t conv_out_h = img_size - conv->kernel_size + 1;
-        size_t conv_out_w = img_size - conv->kernel_size + 1;
-        size_t pooled_h = conv_out_h / 2;
-        size_t pooled_w = conv_out_w / 2;
+        for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
+            MAT_AT(grad_fc.as[nn.count], 0, j) = MAT_AT(NN_OUTPUT(nn), 0, j) - MAT_AT(label_row, 0, j);
 
-        Mat* conv_out = malloc(sizeof(Mat) * conv->out_channels);
-        Mat* pooled = malloc(sizeof(Mat) * conv->out_channels);
-
-        // Check malloc success
-        if (conv_out == NULL || pooled == NULL)
+        for (size_t l = nn.count; l-- > 0; )
         {
-            fprintf(stderr, "Memory allocation failed for conv_out or pooled.\n");
+            Mat* dA = &grad_fc.as[l + 1];
+            Mat* A_prev = &nn.as[l];
+            Mat* W = &nn.ws[l];
+            Mat* dW = &grad_fc.ws[l];
+            Mat* db = &grad_fc.bs[l];
 
-            break;
+            Mat W_T = Mat_transpose(*A_prev);
+            
+            Mat_dot(*dW, W_T, *dA);
+            Mat_free(W_T);
+
+            Mat_copy(*db, *dA);
+
+            Mat Wt = Mat_transpose(*W);
+            Mat dA_prev = Mat_alloc(A_prev->rows, A_prev->cols);
+            
+            Mat_dot(dA_prev, *dA, Wt);
+            Mat_free(Wt);
+
+            for (size_t y = 0; y < A_prev->rows; y++)
+                for (size_t x = 0; x < A_prev->cols; x++)
+                    MAT_AT(dA_prev, y, x) *= MAT_AT(*A_prev, y, x) > 0 ? 1.0f : 0.0f;
+
+            Mat_copy(*dA, dA_prev);
+            Mat_free(dA_prev);
         }
 
+        size_t idx = 0;
+        
         for (size_t c = 0; c < conv->out_channels; c++)
         {
-            conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
-            pooled[c] = Mat_alloc(pooled_h, pooled_w);
+            Mat pooled_grad = Mat_alloc(pooled[c].rows, pooled[c].cols);
+
+            for (size_t y = 0; y < pooled[c].rows; y++)
+                for (size_t x = 0; x < pooled[c].cols; x++)
+                    MAT_AT(pooled_grad, y, x) = MAT_AT(grad_fc.as[0], 0, idx++);
+
+            MaxPool2D_backprop(pooled_grad, pooled[c], conv_out[c], &d_conv_out[c]);
+            
+            Mat_free(pooled_grad);
         }
 
-        Mat flat;
+        for (size_t oc = 0; oc < conv->out_channels; oc++)
+        {
+            for (size_t ic = 0; ic < conv->in_channels; ic++)
+            {
+                Mat* kernel = &conv->kernels[oc * conv->in_channels + ic];
+                Mat kernel_grad = Mat_alloc(kernel->rows, kernel->cols);
+                
+                Conv_compute_kernel_grad(input_image, d_conv_out[oc], kernel_grad);
 
-        CNN_forward(nn, *conv, input_image, conv_out, pooled, &flat);
+                for (size_t k = 0; k < kernel->rows * kernel->cols; k++)
+                    kernel->es[k] -= lr * kernel_grad.es[k];
+
+                Mat_free(kernel_grad);
+            }
+
+            float bias_grad = 0.0f;
+            
+            for (size_t y = 0; y < d_conv_out[oc].rows; y++)
+                for (size_t x = 0; x < d_conv_out[oc].cols; x++)
+                    bias_grad += MAT_AT(d_conv_out[oc], y, x);
+
+            MAT_AT(conv->biases[oc], 0, 0) -= lr * bias_grad;
+        }
+
+        NN_learn(nn, grad_fc, lr);
 
         for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
         {
             float y = MAT_AT(label_row, 0, j);
             float p = MAT_AT(NN_OUTPUT(nn), 0, j);
-
+            
             epoch_cost -= y * logf(fmaxf(p, 1e-7f));
         }
 
         size_t max_idx = 0;
         float max_val = MAT_AT(NN_OUTPUT(nn), 0, 0);
-
+        
         for (size_t j = 1; j < NN_OUTPUT(nn).cols; j++)
-            if (MAT_AT(NN_OUTPUT(nn), 0, j) > max_val) { max_val = MAT_AT(NN_OUTPUT(nn), 0, j); max_idx = j; }
+            if (MAT_AT(NN_OUTPUT(nn), 0, j) > max_val)
+            {
+                max_val = MAT_AT(NN_OUTPUT(nn), 0, j);
 
-        if (MAT_AT(label_row, 0, max_idx) == 1.0f) correct++;
+                max_idx = j;
+            }
 
-        // free eval temp
-        Mat_free(flat);
-
-        for (size_t c = 0; c < conv->out_channels; c++)
-        {
-            Mat_free(conv_out[c]);
-            Mat_free(pooled[c]);
-        }
-
-        free(conv_out);
-        free(pooled);
-
+        if (MAT_AT(label_row, 0, max_idx) == 1.0f)
+            correct++;
+        
         Mat_free(input_image);
+        Mat_free(flat);
     }
 
     epoch_cost /= samples;
     float acc = (float)correct / samples;
 
-    printf("Epoch %d/%d, cost = %.4f, accuracy = %.4f\n", epoch_num, total_epochs, epoch_cost, acc);
+    printf("Epoch %d/%d, cost = %.4f, accuracy = %.2f\n", epoch_num, total_epochs, epoch_cost, acc);
+
+    for (size_t c = 0; c < conv->out_channels; c++)
+    {
+        Mat_free(conv_out[c]);
+        Mat_free(pooled[c]);
+
+        Mat_free(d_conv_out[c]);
+    }
+
+    free(conv_out);
+    free(pooled);
+
+    free(d_conv_out);
 }
 
 void CNN_save(FILE* file, ConvLayer conv, NN nn)
@@ -883,15 +870,12 @@ void CNN_save(FILE* file, ConvLayer conv, NN nn)
     fwrite(&conv.out_channels, sizeof(size_t), 1, file);
     fwrite(&conv.kernel_size, sizeof(size_t), 1, file);
 
-    // Save kernels (1D array)
     for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
         Mat_save(file, conv.kernels[i]);
 
-    // Save biases
     for (size_t i = 0; i < conv.out_channels; i++)
         Mat_save(file, conv.biases[i]);
 
-    // Save FC NN
     NN_save(file, nn);
 }
 
@@ -923,8 +907,14 @@ void CNN_load(ConvLayer* conv, NN* nn, FILE* file)
     {
         fprintf(stderr, "Memory allocation failed for conv layer\n");
         
-        free(conv->kernels);
-        free(conv->biases);
+        if (conv->kernels)
+            free(conv->kernels);
+        
+        if (conv->biases)
+            free(conv->biases);
+        
+        conv->kernels = NULL;
+        conv->biases = NULL;
         
         return;
     }

@@ -11,11 +11,10 @@ int main()
 {
     // --- Load dataset ---
     FILE* file = NULL;
-    fopen_s(&file, "data/number.dat", "rb");
 
-    if (!file)
+    if (fopen_s(&file, "data/number.dat", "rb") != 0 || !file)
     {
-        printf("Failed to open 'data/number.dat'");
+        printf("Failed to open 'data/number.dat'\n");
 
         return EXIT_FAILURE;
     }
@@ -58,7 +57,7 @@ int main()
 
     // Load images
     uint8_t* raw_images = (uint8_t*)malloc(sizeof(uint8_t) * sample_count * input_size);
-    
+
     if (!raw_images)
     {
         printf("Memory allocation failed\n");
@@ -82,7 +81,7 @@ int main()
     fclose(file);
 
     Mat train_inputs = Mat_alloc(sample_count, input_size);
-    
+
     for (size_t i = 0; i < sample_count; i++)
         for (size_t j = 0; j < input_size; j++)
             MAT_AT(train_inputs, i, j) = raw_images[i * input_size + j] / 255.0f;
@@ -101,52 +100,59 @@ int main()
 
         MAT_AT(row, 0, i % num_classes) = 1.0f;
     }
+    
+    // --- Network & ConvLayer ---
+    ConvLayer conv = Conv_alloc(1, 16, 3);
 
-    // Architecture
-    size_t conv_out_rows = CELL_LEN - 3 + 1;   // 3x3 kernel => out size
+    size_t conv_out_rows = CELL_LEN - conv.kernel_size + 1;
     size_t pool_rows = conv_out_rows / 2;
 
-    size_t fc_input_size = 16 * pool_rows * pool_rows;
-
+    size_t fc_input_size = conv.out_channels * pool_rows * pool_rows;
     size_t fc_arch[] = { fc_input_size, 128, 64, num_classes };
+	
+    const float lr = 0.05f;
+    const int epochs = 2500;
 
+    // Allocate NN and gradient
     NN nn = NN_alloc(fc_arch, sizeof(fc_arch) / sizeof(*fc_arch));
     NN grad_fc = NN_alloc(fc_arch, sizeof(fc_arch) / sizeof(*fc_arch));
-
+	
     // Xavier init for FC
     NN_xavier_init(nn);
 
     // Bias small positive
-    for (size_t i = 0; i < nn.count; i++) Mat_fill(nn.bs[i], 0.01f);
+    for (size_t i = 0; i < nn.count; i++)
+        Mat_fill(nn.bs[i], 0.01f);
 
-    // Conv layer init
-    ConvLayer conv = Conv_alloc(1, 16, 3);
-    
-    for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++) Mat_rand(conv.kernels[i], -0.1f, 0.1f);
-    for (size_t i = 0; i < conv.out_channels; i++) MAT_AT(conv.biases[i], 0, 0) = 0.0f;
+    // Conv layer init (only kernels & biases)
+    for (size_t i = 0; i < conv.out_channels * conv.in_channels; i++)
+        Mat_rand(conv.kernels[i], -0.1f, 0.1f);
 
-    const float lr = 0.05f;
-    const int epochs = 500;
+    for (size_t i = 0; i < conv.out_channels; i++)
+        MAT_AT(conv.biases[i], 0, 0) = 0.0f;
 
+    // --- Training loop ---
     for (int e = 1; e <= epochs; e++)
         CNN_train_epoch(nn, grad_fc, &conv, train_inputs, train_labels, lr, e, epochs);
-
-    // Save model
+	
+    // --- Save model ---
     FILE* out_file = NULL;
     fopen_s(&out_file, "data/model.cnn", "wb");
 
     if (out_file)
     {
         CNN_save(out_file, conv, nn);   // Save both ConvLayer and FC NN
-
+        
         fclose(out_file);
-
+        
         printf("Model saved to 'data/model.cnn'\n");
     }
     else
+    {
         printf("Failed to open 'data/model.cnn' for saving\n");
+    }
 
-    // Cleanup
+    // --- Cleanup ---
     NN_free(&nn);
     NN_free(&grad_fc);
 
@@ -154,6 +160,4 @@ int main()
     Mat_free(train_labels);
 
     Conv_free(&conv);
-
-    return EXIT_SUCCESS;
 }
