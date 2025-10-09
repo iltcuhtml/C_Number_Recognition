@@ -129,7 +129,7 @@ int main()
     const int epochs = 500;
 
     for (int e = 1; e <= epochs; e++)
-        CNN_train_epoch_full_wrapper(nn, grad_fc, &conv, train_inputs, train_labels, lr, e, epochs);
+        CNN_train_epoch(nn, grad_fc, &conv, train_inputs, train_labels, lr, e, epochs);
 
     // Save model
     FILE* out_file = NULL;

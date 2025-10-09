@@ -25,7 +25,7 @@ uint8_t nn_initialized = 0;
 
 uint8_t quit = 0;
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static HDC hMemDC = NULL;
     static HBITMAP hBitmap   = NULL;
@@ -272,12 +272,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                             for (size_t x = 0; x < img_size; x++)
                                 MAT_AT(input_image, y, x) = data[y * img_size + x] / 255.0f;
 
-                        // Forward through CNN
+                        // Allocate feature maps
+                        size_t conv_out_h = img_size - conv.kernel_size + 1;
+                        size_t conv_out_w = img_size - conv.kernel_size + 1;
+                        size_t pooled_h = conv_out_h / 2;
+                        size_t pooled_w = conv_out_w / 2;
+
                         Mat* conv_out = malloc(sizeof(Mat) * conv.out_channels);
                         Mat* pooled = malloc(sizeof(Mat) * conv.out_channels);
+                        
+                        // Check malloc success
+                        if (conv_out == NULL || pooled == NULL)
+                        {
+                            ShowMessage("Memory allocation failed for conv_out or pooled.", TYPE_ERROR);
+                            
+							quit = 1;
+
+                            break;
+                        }
+
+                        for (size_t c = 0; c < conv.out_channels; c++)
+                        {
+                            conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
+                            pooled[c] = Mat_alloc(pooled_h, pooled_w);
+                        }
+
                         Mat flat;
 
-                        CNN_forward_sample(nn, conv, input_image, conv_out, pooled, &flat);
+                        CNN_forward(nn, conv, input_image, conv_out, pooled, &flat);
 
                         printf("Prediction:\n");
 
@@ -346,7 +368,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                         }
 
                         fseek(file, 0, SEEK_END);
-                        fwrite(data, sizeof(uint8_t), CELL_LEN * CELL_LEN, file);
+                        fwrite(data, sizeof(uint8_t), (size_t)(CELL_LEN * CELL_LEN), file);
 
                         count++;
                         fseek(file, 7, SEEK_SET);
@@ -407,8 +429,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                             break;
                         }
 
-                        fseek(file, 7 + sizeof(size_t) + idx * CELL_LEN * CELL_LEN, SEEK_SET);
-                        fread(data, sizeof(uint8_t), CELL_LEN * CELL_LEN, file);
+                        fseek(file, 7 + sizeof(size_t) + (size_t)(idx * CELL_LEN * CELL_LEN), SEEK_SET);
+                        fread(data, sizeof(uint8_t), (size_t)(CELL_LEN * CELL_LEN), file);
 
                         fclose(file);
 
