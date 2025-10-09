@@ -25,7 +25,6 @@ endif()
 add_executable(
     train
     src/train.c
-    "src/DRAW_INPUT.h" "src/DRAW_INPUT.c"
     "src/NN.h" "src/NN.c"
 )
 
