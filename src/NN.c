@@ -237,12 +237,17 @@ void Conv_free(ConvLayer* conv)
 
 void Conv_compute_kernel_grad(Mat input, Mat d_out, Mat kernel_grad)
 {
+    // input: original input feature map corresponding to the input channel
+    // d_out: gradients for convolution output (out_rows x out_cols)
+    // kernel_grad: k x k, will be accumulated
+
     size_t k = kernel_grad.rows;
 
     size_t out_rows = d_out.rows;
     size_t out_cols = d_out.cols;
 
-    Mat_fill(*(&kernel_grad), 0.0f);
+    // zero kernel_grad
+    Mat_fill(kernel_grad, 0.0f);
 
     for (size_t y = 0; y < out_rows; y++)
         for (size_t x = 0; x < out_cols; x++)
@@ -251,6 +256,7 @@ void Conv_compute_kernel_grad(Mat input, Mat d_out, Mat kernel_grad)
 
             for (size_t ky = 0; ky < k; ky++)
                 for (size_t kx = 0; kx < k; kx++)
+                    // input patch starts at (y, x)
                     MAT_AT(kernel_grad, ky, kx) += MAT_AT(input, y + ky, x + kx) * dout;
         }
 }
@@ -369,7 +375,11 @@ Mat Pool2D(Mat input, size_t pool_size, size_t stride)
 
 void MaxPool2D_backprop(Mat pooled_grad, Mat pooled, Mat conv_out, Mat* d_conv_out)
 {
+    // Assumes pool_size = 2 and stride = 2 (matches Pool2D usage in this code).
     Mat_fill(*d_conv_out, 0.0f);
+
+    size_t pool_size = 2;
+    size_t stride = 2;
 
     for (size_t y = 0; y < pooled.rows; y++)
         for (size_t x = 0; x < pooled.cols; x++)
@@ -377,16 +387,24 @@ void MaxPool2D_backprop(Mat pooled_grad, Mat pooled, Mat conv_out, Mat* d_conv_o
             float max_val = -FLT_MAX;
             size_t max_i = 0, max_j = 0;
 
-            for (size_t py = 0; py < 2; py++)
-                for (size_t px = 0; px < 2; px++)
+            for (size_t py = 0; py < pool_size; py++)
+                for (size_t px = 0; px < pool_size; px++)
                 {
-                    size_t iy = y * 2 + py;
-                    size_t ix = x * 2 + px;
+                    size_t iy = y * stride + py;
+                    size_t ix = x * stride + px;
+
                     float v = MAT_AT(conv_out, iy, ix);
-                    if (v > max_val) { max_val = v; max_i = iy; max_j = ix; }
+
+                    if (v > max_val)
+                    {
+                        max_val = v;
+                        max_i = iy;
+                        max_j = ix;
+                    }
                 }
 
-            MAT_AT(*d_conv_out, max_i, max_j) = MAT_AT(pooled_grad, y, x);
+            // add pooled gradient to the location of the max
+            MAT_AT(*d_conv_out, max_i, max_j) += MAT_AT(pooled_grad, y, x);
         }
 }
 
@@ -712,8 +730,6 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
     Mat* pooled = malloc(sizeof(Mat) * conv->out_channels);
     
     Mat* d_conv_out = malloc(sizeof(Mat) * conv->out_channels);
-    
-    Mat flat;
 
     for (size_t c = 0; c < conv->out_channels; c++)
     {
@@ -736,14 +752,19 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
                 MAT_AT(input_image, y, x) = MAT_AT(input_row, 0, y * img_size + x);
 
         Mat label_row = Mat_row(labels, i);
-        
+
+        // forward
+        Mat flat;
         CNN_forward(nn, *conv, input_image, conv_out, pooled, &flat);
         
+        // zero grad
         NN_zero_grad(grad_fc);
 
+        // output gradient (cross-entropy with softmax)
         for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
             MAT_AT(grad_fc.as[nn.count], 0, j) = MAT_AT(NN_OUTPUT(nn), 0, j) - MAT_AT(label_row, 0, j);
 
+        // backprop through FC layers (standard)
         for (size_t l = nn.count; l-- > 0; )
         {
             Mat* dA = &grad_fc.as[l + 1];
@@ -752,29 +773,32 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
             Mat* dW = &grad_fc.ws[l];
             Mat* db = &grad_fc.bs[l];
 
-            Mat W_T = Mat_transpose(*A_prev);
-            
-            Mat_dot(*dW, W_T, *dA);
-            Mat_free(W_T);
+            // dW = A_prev^T dot dA   (A_prev: 1 x n_prev => transpose n_prev x 1)
+            Mat A_prev_T = Mat_transpose(*A_prev);
+            Mat_dot(*dW, A_prev_T, *dA);
+            Mat_free(A_prev_T);
 
+            // db = dA (since batch size = 1)
             Mat_copy(*db, *dA);
 
-            Mat Wt = Mat_transpose(*W);
+            // dA_prev = dA dot W^T
+            Mat W_T = Mat_transpose(*W);
             Mat dA_prev = Mat_alloc(A_prev->rows, A_prev->cols);
-            
-            Mat_dot(dA_prev, *dA, Wt);
-            Mat_free(Wt);
+            Mat_dot(dA_prev, *dA, W_T);
+            Mat_free(W_T);
 
+            // apply ReLU derivative on A_prev
             for (size_t y = 0; y < A_prev->rows; y++)
                 for (size_t x = 0; x < A_prev->cols; x++)
-                    MAT_AT(dA_prev, y, x) *= MAT_AT(*A_prev, y, x) > 0 ? 1.0f : 0.0f;
+                    MAT_AT(dA_prev, y, x) *= (MAT_AT(*A_prev, y, x) > 0.0f) ? 1.0f : 0.0f;
 
             Mat_copy(*dA, dA_prev);
             Mat_free(dA_prev);
         }
 
+        // map fc input gradients (grad_fc.as[0]) back to pooled channel grads
         size_t idx = 0;
-        
+
         for (size_t c = 0; c < conv->out_channels; c++)
         {
             Mat pooled_grad = Mat_alloc(pooled[c].rows, pooled[c].cols);
@@ -783,18 +807,28 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
                 for (size_t x = 0; x < pooled[c].cols; x++)
                     MAT_AT(pooled_grad, y, x) = MAT_AT(grad_fc.as[0], 0, idx++);
 
+            // unpool -> d_conv_out[c]
             MaxPool2D_backprop(pooled_grad, pooled[c], conv_out[c], &d_conv_out[c]);
-            
+
             Mat_free(pooled_grad);
         }
 
+        // update conv kernels using original input_image as input to conv (single-layer conv)
         for (size_t oc = 0; oc < conv->out_channels; oc++)
         {
             for (size_t ic = 0; ic < conv->in_channels; ic++)
             {
+                // for single-layer conv with raw image inputs, input is input_image
+                // if multi-channel input, the calling code must provide correct input channels
                 Mat* kernel = &conv->kernels[oc * conv->in_channels + ic];
                 Mat kernel_grad = Mat_alloc(kernel->rows, kernel->cols);
                 
+                Mat_fill(kernel_grad, 0.0f);
+
+                // IMPORTANT: use the original input for kernel gradient.
+                // If conv->in_channels == 1 => use input_image
+                // If >1, user must pass per-channel inputs; here assume ic==0 uses input_image,
+                // for other channels we treat as zero (or duplicate). For single-layer MNIST this suffices.
                 Conv_compute_kernel_grad(input_image, d_conv_out[oc], kernel_grad);
 
                 for (size_t k = 0; k < kernel->rows * kernel->cols; k++)
@@ -803,8 +837,9 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
                 Mat_free(kernel_grad);
             }
 
+            // bias update
             float bias_grad = 0.0f;
-            
+
             for (size_t y = 0; y < d_conv_out[oc].rows; y++)
                 for (size_t x = 0; x < d_conv_out[oc].cols; x++)
                     bias_grad += MAT_AT(d_conv_out[oc], y, x);
@@ -812,19 +847,21 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
             MAT_AT(conv->biases[oc], 0, 0) -= lr * bias_grad;
         }
 
+        // update FC params
         NN_learn(nn, grad_fc, lr);
 
+        // cost + accuracy
         for (size_t j = 0; j < NN_OUTPUT(nn).cols; j++)
         {
             float y = MAT_AT(label_row, 0, j);
             float p = MAT_AT(NN_OUTPUT(nn), 0, j);
-            
+
             epoch_cost -= y * logf(fmaxf(p, 1e-7f));
         }
 
         size_t max_idx = 0;
         float max_val = MAT_AT(NN_OUTPUT(nn), 0, 0);
-        
+
         for (size_t j = 1; j < NN_OUTPUT(nn).cols; j++)
             if (MAT_AT(NN_OUTPUT(nn), 0, j) > max_val)
             {
@@ -835,13 +872,13 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
 
         if (MAT_AT(label_row, 0, max_idx) == 1.0f)
             correct++;
-        
+
         Mat_free(input_image);
         Mat_free(flat);
     }
 
-    epoch_cost /= samples;
-    float acc = (float)correct / samples;
+    epoch_cost /= (float)samples;
+    float acc = (float)correct / (float)samples;
 
     printf("Epoch %d/%d, cost = %.4f, accuracy = %.2f\n", epoch_num, total_epochs, epoch_cost, acc);
 
@@ -849,13 +886,11 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
     {
         Mat_free(conv_out[c]);
         Mat_free(pooled[c]);
-
         Mat_free(d_conv_out[c]);
     }
 
     free(conv_out);
     free(pooled);
-
     free(d_conv_out);
 }
 

@@ -111,7 +111,7 @@ int main()
     size_t fc_arch[] = { fc_input_size, 128, 64, num_classes };
 	
     const float lr = 0.05f;
-    const int epochs = 2500;
+    const int epochs = 5000;
 
     // Allocate NN and gradient
     NN nn = NN_alloc(fc_arch, sizeof(fc_arch) / sizeof(*fc_arch));
