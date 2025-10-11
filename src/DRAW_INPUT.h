@@ -13,11 +13,12 @@
 #define TYPE_INFO       3
 
 int32_t SCREEN_WIDTH, SCREEN_HEIGHT,
-         SCREEN_STANDARD,
-         CANVAS_SIZE, CANVAS_X, CANVAS_Y,
-         CELL_LEN, CELL_SIZE;
+        SCREEN_STANDARD,
+        CANVAS_SIZE, CANVAS_X, CANVAS_Y,
+        CELL_LEN, CELL_SIZE, 
+        RESULT_SIZE, RESULT_X, RESULT_Y;
 
-void SetScreenConstants(int32_t screen_width, int32_t screen_height, uint8_t nn_initialized);
+void SetScreenConstants(int32_t screen_width, int32_t screen_height, uint8_t DEBUG);
 
 void ShowMessage(const char* message, int type);
 

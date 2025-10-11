@@ -10,14 +10,17 @@
 #include "DRAW_INPUT.h"
 #include "NN.h"
 
-#define DEBUG
+//#define DEBUG
 
 #define ID_BUTTON_CLEAR     1001
-#define ID_BUTTON_QUIT      1002
-#define ID_BUTTON_PREDICT   1003
+#define ID_BUTTON_PREDICT   1002
+#define ID_BUTTON_QUIT      1003
+
 #define ID_BUTTON_SAVE      1004
 #define ID_BUTTON_LOAD      1005
 #define ID_LOAD_INDEX       1006
+
+#define ID_STATIC_RESULT    1007
 
 NN nn;
 ConvLayer conv;
@@ -31,16 +34,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     static HBITMAP hBitmap   = NULL;
     static HGDIOBJ oldBitmap = NULL;
 
+    static uint8_t* data = NULL;
+    static uint8_t drawing = 0;
+
     static HWND hwndButtonClear   = NULL;
-    static HWND hwndButtonQuit    = NULL;
     static HWND hwndButtonPredict = NULL;
+    static HWND hwndButtonQuit    = NULL;
     static HWND hwndButtonSave    = NULL;
     static HWND hwndButtonLoad    = NULL;
     static HWND hwndLoadIndex     = NULL;
+    static HWND hwndStaticResult  = NULL;
 
-    static uint8_t* data = NULL;
-
-    static uint8_t drawing = 0;
+	static HFONT hFontButton = NULL;
+	static HFONT hFontIndex  = NULL;
+	static HFONT hFontResult = NULL;
 
     switch (msg)
     {
@@ -66,35 +73,35 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             int32_t btnY = (int32_t)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
 
             hwndButtonClear = CreateWindow(
-                "BUTTON", "Clear", btnStyle, 
+                "BUTTON", "\nClear", btnStyle, 
                 (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), btnY,
                 btnWidth, btnHeight, 
                 hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
             );
 
-            hwndButtonQuit = CreateWindow(
-                "BUTTON", "Quit", btnStyle, 
-                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
-                btnWidth, btnHeight, 
-                hwnd, (HMENU)ID_BUTTON_QUIT, NULL, NULL
-            );
-
             hwndButtonPredict = CreateWindow(
-                "BUTTON", "Predict", btnStyle,
+                "BUTTON", "\nPredict", btnStyle,
                 (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
                 btnWidth, btnHeight,
                 hwnd, (HMENU)ID_BUTTON_PREDICT, NULL, NULL
             );
 
+            hwndButtonQuit = CreateWindow(
+                "BUTTON", "\nQuit", btnStyle, 
+                (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
+                btnWidth, btnHeight, 
+                hwnd, (HMENU)ID_BUTTON_QUIT, NULL, NULL
+            );
+
             hwndButtonSave = CreateWindow(
-                "BUTTON", "Save", btnStyle,
-                (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                "BUTTON", "\nSave", btnStyle,
+                (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), (int)(btnY + btnHeight * 1.25),
                 btnWidth, btnHeight,
                 hwnd, (HMENU)ID_BUTTON_SAVE, NULL, NULL
             );
 
             hwndButtonLoad = CreateWindow(
-                "BUTTON", "Load", btnStyle,
+                "BUTTON", "\nLoad", btnStyle,
                 (int)(CANVAS_X + CANVAS_SIZE * 0.375f), (int)(btnY + btnHeight * 1.25),
                 btnWidth, btnHeight,
                 hwnd, (HMENU)ID_BUTTON_LOAD, NULL, NULL
@@ -108,14 +115,90 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hwnd, (HMENU)ID_LOAD_INDEX, NULL, NULL
             );
 
-            if (nn_initialized)
-            {
-                ShowWindow(hwndButtonSave, SW_HIDE);
-                ShowWindow(hwndButtonLoad, SW_HIDE);
-                ShowWindow(hwndLoadIndex, SW_HIDE);
-            }
-            else
+            hwndStaticResult = CreateWindow(
+                "STATIC", "",
+                WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER,
+                RESULT_X, RESULT_Y, 
+                RESULT_SIZE, RESULT_SIZE, 
+                hwnd, (HMENU)ID_STATIC_RESULT, NULL, NULL
+            );
+
+            if (!nn_initialized)
                 ShowWindow(hwndButtonPredict, SW_HIDE);
+
+#ifndef DEBUG
+            ShowWindow(hwndButtonSave, SW_HIDE);
+            ShowWindow(hwndButtonLoad, SW_HIDE);
+            ShowWindow(hwndLoadIndex, SW_HIDE);
+#endif
+
+            HFONT hFontButton = CreateFont(
+                (int)(btnHeight / 3),
+                (int)(btnHeight / 6),
+                0, 0,
+                FW_BOLD,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+            );
+
+            HFONT hFontIndex = CreateFont(
+                btnHeight,
+                (int)(btnHeight / 3),
+                0, 0,
+                FW_MEDIUM,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+			);
+
+#ifdef DEBUG
+            hFontResult = CreateFont(
+                (int)(RESULT_SIZE / 12),
+                (int)(RESULT_SIZE / 24),
+                0, 0,
+                FW_BLACK,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+            );
+#else
+            hFontResult = CreateFont(
+                (int)(RESULT_SIZE / 2),
+                (int)(RESULT_SIZE / 6),
+                0, 0,
+                FW_BLACK,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+            );
+#endif
+
+            SendMessage(hwndButtonClear, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+            SendMessage(hwndButtonPredict, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+            SendMessage(hwndButtonQuit, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+            SendMessage(hwndButtonSave, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+            SendMessage(hwndButtonLoad, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+
+            SendMessage(hwndLoadIndex, WM_SETFONT, (WPARAM)hFontIndex, TRUE);
+
+            SendMessage(hwndStaticResult, WM_SETFONT, (WPARAM)hFontResult, TRUE);
 
             return 0;
         }
@@ -125,7 +208,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             RECT rect;
             GetClientRect(hwnd, &rect);
 
-            SetScreenConstants(rect.right - rect.left, rect.bottom - rect.top, nn_initialized);
+            SetScreenConstants(
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+#ifdef DEBUG
+                1
+#else
+                0
+#endif
+            );
 
             if (hMemDC && hBitmap)
             {
@@ -147,23 +238,97 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
             DrawInCanvas(hMemDC, data);
 
-            if (hwndButtonClear && hwndButtonQuit && hwndButtonPredict && 
-                hwndButtonSave && hwndButtonLoad && hwndLoadIndex)
-            {
-                int btnWidth = (int)(CANVAS_SIZE / 4);
-                int btnHeight = (int)(CANVAS_SIZE / 8);
-                int btnY = (int)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
+            int btnWidth = (int)(CANVAS_SIZE / 4);
+            int btnHeight = (int)(CANVAS_SIZE / 8);
 
+            int btnY = (int)(CANVAS_Y + CANVAS_SIZE + btnHeight / 4);
+
+            if (hFontButton)
+            {
+                DeleteObject(hFontButton);
+
+                hFontButton = NULL;
+            }
+
+            if (hFontIndex)
+            {
+                DeleteObject(hFontIndex);
+
+                hFontIndex = NULL;
+            }
+
+            if (hFontResult)
+            {
+                DeleteObject(hFontResult);
+
+                hFontResult = NULL;
+            }
+
+            HFONT hFontButton = CreateFont(
+                (int)(btnHeight / 3),
+                (int)(btnHeight / 6),
+                0, 0,
+                FW_BOLD,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+            );
+
+            HFONT hFontIndex = CreateFont(
+                btnHeight,
+                (int)(btnHeight / 3),
+                0, 0,
+                FW_MEDIUM,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+				"Arial"
+			);
+
+#ifdef DEBUG
+            hFontResult = CreateFont(
+                (int)(RESULT_SIZE / 12),
+                (int)(RESULT_SIZE / 24),
+                0, 0,
+                FW_BLACK,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+            );
+#else
+            hFontResult = CreateFont(
+                (int)(RESULT_SIZE / 2),
+                (int)(RESULT_SIZE / 6),
+                0, 0,
+                FW_BLACK,
+                FALSE, FALSE, FALSE,
+                ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH | FF_DONTCARE,
+                "Arial"
+            );
+#endif
+
+            if (hwndButtonClear && hwndButtonQuit && hwndButtonPredict && 
+                hwndButtonSave && hwndButtonLoad && hwndLoadIndex && 
+                hwndStaticResult)
+            {
                 MoveWindow(
                     hwndButtonClear,
                     (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), btnY,
-                    btnWidth, btnHeight,
-                    TRUE
-                );
-
-                MoveWindow(
-                    hwndButtonQuit,
-                    (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
                     btnWidth, btnHeight,
                     TRUE
                 );
@@ -176,8 +341,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 );
 
                 MoveWindow(
+                    hwndButtonQuit,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.6875f), btnY,
+                    btnWidth, btnHeight,
+                    TRUE
+                );
+
+                MoveWindow(
                     hwndButtonSave,
-                    (int)(CANVAS_X + CANVAS_SIZE * 0.375f), btnY,
+                    (int)(CANVAS_X + CANVAS_SIZE * 0.0625f), (int)(btnY + btnHeight * 1.25),
                     btnWidth, btnHeight,
                     TRUE
                 );
@@ -195,6 +367,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     btnWidth, btnHeight,
                     TRUE
                 );
+
+                MoveWindow(
+                    hwndStaticResult,
+                    RESULT_X, RESULT_Y, 
+                    RESULT_SIZE, RESULT_SIZE,
+                    TRUE
+                );
+
+                SendMessage(hwndButtonClear, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+                SendMessage(hwndButtonPredict, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+                SendMessage(hwndButtonQuit, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+                SendMessage(hwndButtonSave, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+                SendMessage(hwndButtonLoad, WM_SETFONT, (WPARAM)hFontButton, TRUE);
+                
+                SendMessage(hwndLoadIndex, WM_SETFONT, (WPARAM)hFontIndex, TRUE);
+                
+                SendMessage(hwndStaticResult, WM_SETFONT, (WPARAM)hFontResult, TRUE);
             }
 
             InvalidateRect(hwnd, NULL, TRUE);
@@ -232,6 +421,45 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             drawing = 0;
 
             return 0;
+        }
+
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            if (hMemDC != NULL && data != NULL && CANVAS_SIZE > 0)
+                BitBlt(
+                    hdc,
+                    CANVAS_X, CANVAS_Y,
+                    CANVAS_SIZE, CANVAS_SIZE,
+                    hMemDC, 0, 0, SRCCOPY
+                );
+
+            EndPaint(hwnd, &ps);
+
+            return 0;
+        }
+
+        case WM_CTLCOLORSTATIC:
+        {
+            HDC hdcStatic = (HDC)wParam;
+            HWND hwndCtl = (HWND)lParam;
+
+            if (hwndCtl == hwndStaticResult)
+            {
+                SetTextColor(hdcStatic, RGB(255, 255, 255));
+                SetBkColor(hdcStatic, RGB(0, 0, 0));
+
+                static HBRUSH hBrush = NULL;
+
+                if (!hBrush)
+                    hBrush = CreateSolidBrush(RGB(0, 0, 0));
+
+                return (INT_PTR)hBrush;
+            }
+
+            break;
         }
 
         case WM_COMMAND:
@@ -332,13 +560,50 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                         CNN_forward(nn, conv, input_image, conv_out, pooled, &flat);
 
-                        // Print prediction
-                        printf("Prediction:\n");
+                        float max_prob = 0.0f;
+                        int max_digit = 0;
+
+                        // Find the digit with the highest probability
+                        for (int i = 0; i < 10; i++)
+                        {
+                            float prob = MAT_AT(NN_OUTPUT(nn), 0, i);
+
+                            if (prob > max_prob)
+                            {
+                                max_prob = prob;
+                                max_digit = i;
+                            }
+                        }
+
+                        // Prepare result text
+                        char result_text[256] = { 0 };
+
+                        char buf[16];
+
+#ifndef DEBUG
+                        if (max_prob < 0.75f)
+                            snprintf(buf, sizeof(buf), "%d?\n(%d%%)", max_digit, (int)(max_prob * 100));
+                        else
+                            snprintf(buf, sizeof(buf), "%d\n(%d%%)", max_digit, (int)(max_prob * 100));
+
+						strcat_s(result_text, sizeof(result_text), buf);
+#else
+                        if (max_prob < 0.75f)
+                            snprintf(buf, sizeof(buf), "%d? (%d%%)\n", max_digit, (int)(max_prob * 100));
+                        else
+                            snprintf(buf, sizeof(buf), "%d (%d%%)\n", max_digit, (int)(max_prob * 100));
+
+                        strcat_s(result_text, sizeof(result_text), buf);
 
                         for (int i = 0; i < 10; i++)
-                            printf("Digit %d: %.3f\n", i, MAT_AT(NN_OUTPUT(nn), 0, i));
-                        
-                        printf("-----------------\n");
+                        {                            
+                            snprintf(buf, sizeof(buf), "\nDigit %d: %.3f", i, MAT_AT(NN_OUTPUT(nn), 0, i));
+                            
+                            strcat_s(result_text, sizeof(result_text), buf);
+                        }
+#endif
+
+                        SetWindowText(hwndStaticResult, result_text);
 
                         // Free memory
                         for (size_t c = 0; c < conv.out_channels; c++)
@@ -479,24 +744,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             return 0;
         }
 
-        case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
-            if (hMemDC != NULL && data != NULL && CANVAS_SIZE > 0)
-                BitBlt(
-                    hdc,
-                    CANVAS_X, CANVAS_Y,
-                    CANVAS_SIZE, CANVAS_SIZE,
-                    hMemDC, 0, 0, SRCCOPY
-                );
-
-            EndPaint(hwnd, &ps);
-
-            return 0;
-        }
-
         case WM_DESTROY:
         {
             if (hMemDC != NULL)
@@ -515,6 +762,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 free(data);
 
                 data = NULL;
+            }
+
+            if (hFontResult)
+            {
+                DeleteObject(hFontResult);
+
+                hFontResult = NULL;
             }
 
             Conv_free(&conv);
@@ -581,7 +835,15 @@ int WINAPI WinMain(
         return EXIT_FAILURE;
     }
 
-    SetScreenConstants(1600, 900, nn_initialized);
+    SetScreenConstants(
+        1600, 
+        900,
+#ifdef DEBUG
+        1
+#else
+        0
+#endif
+    );
 
 
     HWND hWnd = CreateWindow(
@@ -604,11 +866,7 @@ int WINAPI WinMain(
         return EXIT_FAILURE;
     }
 
-#ifdef DEBUG
-    #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
-#else
 	FreeConsole();
-#endif
 
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);

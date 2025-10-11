@@ -728,14 +728,12 @@ void CNN_train_epoch(NN nn, NN grad_fc, ConvLayer* conv, Mat inputs, Mat labels,
 
     Mat* conv_out = malloc(sizeof(Mat) * conv->out_channels);
     Mat* pooled = malloc(sizeof(Mat) * conv->out_channels);
-    
     Mat* d_conv_out = malloc(sizeof(Mat) * conv->out_channels);
 
     for (size_t c = 0; c < conv->out_channels; c++)
     {
         conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
         pooled[c] = Mat_alloc(pooled_h, pooled_w);
-        
         d_conv_out[c] = Mat_alloc(conv_out_h, conv_out_w);
     }
 
