@@ -31,7 +31,7 @@ add_executable(
 # 실행 파일 2: predict
 add_executable(
     predict
-    src/main.c
+    "src/predict.c"
     "src/DRAW_INPUT.h" "src/DRAW_INPUT.c"
     "src/NN.h" "src/NN.c"
 )

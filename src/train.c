@@ -151,7 +151,7 @@ int main()
     }
 
     // --- Training loop ---
-    const float lr = 5.0f;
+    const float lr = 2.5f;
     const int epochs = 250;
     
     for (int e = 1; e <= epochs; e++)

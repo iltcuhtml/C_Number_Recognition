@@ -10,7 +10,7 @@
 #include "DRAW_INPUT.h"
 #include "NN.h"
 
-//#define DEBUG
+#define DEBUG
 
 #define ID_BUTTON_CLEAR     1001
 #define ID_BUTTON_PREDICT   1002
